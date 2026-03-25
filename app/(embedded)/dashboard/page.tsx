@@ -100,6 +100,8 @@ export default function DashboardPage() {
   if (isError) {
     const status = error instanceof ApiError ? error.status : null;
     const isAuthError = status === 401 || status === 403;
+    // Show the actual message from the backend to aid debugging
+    const backendMessage = error instanceof ApiError ? error.message : null;
 
     return (
       <Page title="Dashboard">
@@ -108,15 +110,26 @@ export default function DashboardPage() {
           tone="critical"
           action={
             isAuthError
-              ? undefined
+              ? {
+                  content: 'Reload page',
+                  onAction: () => window.location.reload(),
+                }
               : { content: 'Retry', onAction: refetch }
           }
         >
-          <p>
-            {isAuthError
-              ? 'Your session has expired. Please reload the page to re-authenticate.'
-              : 'Could not load your dashboard data. Please try again.'}
-          </p>
+          <BlockStack gap="100">
+            <p>
+              {isAuthError
+                ? 'Your session has expired or could not be verified. Reload the page to re-authenticate.'
+                : 'Could not load your dashboard data. Please try again.'}
+            </p>
+            {backendMessage && backendMessage !== `Request failed: ${status}` && (
+              <p><strong>Backend:</strong> {backendMessage}</p>
+            )}
+            {status && (
+              <p><strong>Status:</strong> {status}</p>
+            )}
+          </BlockStack>
         </Banner>
       </Page>
     );
