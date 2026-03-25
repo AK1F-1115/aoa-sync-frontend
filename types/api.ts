@@ -180,3 +180,50 @@ export interface CollectionsBootstrapResponse {
   brand_collections: number;
   total: number;
 }
+
+// ---------------------------------------------------------------------------
+// Products
+// ---------------------------------------------------------------------------
+
+export type ProductStatus = 'active' | 'draft' | 'archived';
+
+/** A single product pushed from AOA to the merchant's Shopify store. */
+export interface StoreProduct {
+  /** Internal AOA product ID */
+  id: string;
+  /** Shopify product GID or numeric ID */
+  shopify_id: string;
+  title: string;
+  vendor: string | null;
+  product_type: string | null;
+  handle: string;
+  status: ProductStatus;
+  /** Primary image URL */
+  image_url: string | null;
+  variants_count: number;
+  /** Lowest variant price as a decimal string e.g. "9.99" */
+  price_min: string;
+  /** Highest variant price as a decimal string e.g. "49.99" */
+  price_max: string;
+  /** ISO timestamp of last sync for this product */
+  synced_at: string | null;
+  /** SKU of the default / first variant */
+  sku: string | null;
+}
+
+/** Paginated response from GET /store/products */
+export interface StoreProductsResponse {
+  products: StoreProduct[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+/** Query params for GET /store/products */
+export interface StoreProductsParams {
+  page?: number;
+  per_page?: number;
+  search?: string;
+  status?: ProductStatus;
+}

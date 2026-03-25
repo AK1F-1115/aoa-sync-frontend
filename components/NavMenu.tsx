@@ -27,8 +27,9 @@ export function NavMenu() {
       <a href="/dashboard" rel="home">
         Dashboard
       </a>
-      <a href="/settings">Settings</a>
+      <a href="/products">Products</a>
       <a href="/orders">Orders</a>
+      <a href="/settings">Settings</a>
     </AppBridgeNavMenu>
   );
 }
