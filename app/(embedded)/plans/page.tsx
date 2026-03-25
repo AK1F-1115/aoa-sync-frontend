@@ -114,10 +114,7 @@ export default function PlansPage() {
   });
 
   const subscribeMutation = useMutation({
-    mutationFn: (planId: BillingPlanId) => {
-      const returnUrl = `${window.location.origin}/billing/return`;
-      return subscribeToPlan(planId, returnUrl);
-    },
+    mutationFn: (planId: BillingPlanId) => subscribeToPlan(planId),
     onSuccess: (data: { confirmationUrl: string }) => {
       // Redirect to Shopify's billing confirmation page
       // This takes the merchant outside the app temporarily

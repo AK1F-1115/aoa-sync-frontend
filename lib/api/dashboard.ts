@@ -1,41 +1,51 @@
 /**
  * lib/api/dashboard.ts
  *
- * Dashboard API calls.
+ * Merchant data — fetches from GET /store/me.
  *
- * @assumed — backend endpoint shape is assumed. See ARCHITECTURE.md §Open Backend Contracts.
- * TODO(backend): Confirm GET /dashboard response shape with backend team.
+ * This is the primary data endpoint for the embedded frontend.
+ * Authentication: Shopify session token (Authorization: Bearer <shopify_jwt>).
  */
 
 import { apiFetch } from './client';
-import type { DashboardResponse } from '@/types/api';
+import type { StoreMeResponse, BillingPlanId } from '@/types/api';
 import type { DashboardData } from '@/types/merchant';
 
 /**
- * Fetches dashboard data including shop info, sync health, and subscription.
+ * Fetches merchant data from GET /store/me.
  *
- * @assumed endpoint: GET /dashboard
- * @assumed response: DashboardResponse
+ * Maps the backend's snake_case response to the frontend domain types.
+ * Fields not included in the /store/me response are mapped to null.
  */
 export async function getDashboardData(): Promise<DashboardData> {
-  const response = await apiFetch<DashboardResponse>('/dashboard');
+  const r = await apiFetch<StoreMeResponse>('/store/me');
 
-  // Map API response to domain type
   return {
     shop: {
-      id: response.shop.id,
-      domain: response.shop.domain,
-      name: response.shop.name,
-      email: response.shop.email,
-      shopifyPlan: response.shop.shopifyPlan,
+      // /store/me only returns shop_domain — name falls back to domain
+      id: r.shop_domain,
+      domain: r.shop_domain,
+      name: r.shop_domain,
+      email: null,
+      shopifyPlan: null,
     },
     syncHealth: {
-      lastRun: response.syncHealth.lastRun,
-      status: response.syncHealth.status,
-      productsPushed: response.syncHealth.productsPushed,
-      errorCount: response.syncHealth.errorCount,
-      lastSyncStatus: response.syncHealth.lastSyncStatus,
+      lastRun: r.last_sync_at,
+      // Derive status from available data: if synced before → healthy, else never_run
+      status: r.last_sync_at ? 'healthy' : 'never_run',
+      productsPushed: r.products_synced,
+      // Error count and last sync result are not in this endpoint
+      errorCount: 0,
+      lastSyncStatus: null,
     },
-    subscription: response.subscription,
+    subscription: {
+      planId: (r.plan?.slug ?? null) as BillingPlanId | null,
+      planName: r.plan?.name ?? null,
+      status: r.subscription_status ?? 'cancelled',
+      trialDaysRemaining: r.trial_days_remaining,
+      // trial_ends_at doubles as next billing date for trial merchants
+      billingOn: r.trial_ends_at,
+      chargeId: null,
+    },
   };
 }

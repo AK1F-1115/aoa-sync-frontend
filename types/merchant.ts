@@ -14,12 +14,12 @@ export interface ShopInfo {
   id: string;
   /** myshopify.com domain e.g. "example.myshopify.com" */
   domain: string;
-  /** Display name of the shop */
+  /** Display name of the shop — falls back to domain if not returned by API */
   name: string;
-  /** Shop owner email */
-  email: string;
-  /** Shopify plan name */
-  shopifyPlan: string;
+  /** Shop owner email — may be null if not returned by the current endpoint */
+  email: string | null;
+  /** Shopify plan name — may be null if not returned by the current endpoint */
+  shopifyPlan: string | null;
 }
 
 // ---------------------------------------------------------------------------

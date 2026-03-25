@@ -42,8 +42,8 @@ export interface Plan {
 // Subscription
 // ---------------------------------------------------------------------------
 
-/** @assumed — subscription status values from Shopify recurring billing */
-export type SubscriptionStatus = 'active' | 'pending' | 'cancelled' | 'frozen' | 'expired';
+/** Subscription status values returned by the backend. */
+export type SubscriptionStatus = 'trial' | 'active' | 'pending' | 'cancelled' | 'frozen' | 'expired';
 
 /** @assumed — subscription info shape returned from GET /subscription */
 export interface SubscriptionInfo {
@@ -64,13 +64,11 @@ export interface SubscriptionInfo {
 
 /** Request body for POST /billing/subscribe */
 export interface BillingSubscribeRequest {
-  /** The plan to subscribe to */
-  plan: BillingPlanId;
   /**
-   * Return URL — where Shopify should redirect after billing confirmation.
-   * This is the billing/return page on this frontend.
+   * The plan slug to subscribe to (e.g. "starter").
+   * The backend reads shop_domain from the session token automatically.
    */
-  returnUrl: string;
+  plan_slug: string;
 }
 
 /** @assumed — response from POST /billing/subscribe */
@@ -93,28 +91,38 @@ export interface BillingCancelResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Dashboard
+// Store / Merchant endpoint
 // ---------------------------------------------------------------------------
 
 /**
- * @assumed — full dashboard response shape from GET /dashboard
- * Contains shop info, sync health, and subscription in one call
- * to minimize round trips on the main page load.
+ * Response from GET /store/me
+ * Primary merchant data endpoint for the embedded frontend.
+ * Authenticated with Shopify session token (Authorization: Bearer <token>).
  */
-export interface DashboardResponse {
-  shop: {
-    id: string;
-    domain: string;
+export interface StoreMeResponse {
+  /** myshopify.com domain e.g. "example.myshopify.com" */
+  shop_domain: string;
+  /** Whether the store is active / installed */
+  active: boolean;
+  /** Current subscription status, or null if never subscribed */
+  subscription_status: SubscriptionStatus | null;
+  /** ISO 8601 — when the trial expires, or null */
+  trial_ends_at: string | null;
+  /** Days remaining in trial, or null if not on trial */
+  trial_days_remaining: number | null;
+  /** ISO 8601 — when the merchant subscribed, or null */
+  subscribed_at: string | null;
+  /** Current assigned plan, or null if none */
+  plan: {
+    slug: string;
     name: string;
-    email: string;
-    shopifyPlan: string;
-  };
-  syncHealth: {
-    lastRun: string | null;
-    status: 'healthy' | 'warning' | 'error' | 'never_run';
-    productsPushed: number;
-    errorCount: number;
-    lastSyncStatus: 'success' | 'partial' | 'failed' | null;
-  };
-  subscription: SubscriptionInfo;
+    /** Monthly price in USD as a string e.g. "29.99" */
+    price_usd: string;
+    sku_limit: number;
+    trial_days: number;
+  } | null;
+  /** Total active synced variants for this store */
+  products_synced: number;
+  /** ISO 8601 UTC timestamp of last sync, or null */
+  last_sync_at: string | null;
 }

@@ -43,6 +43,7 @@ function statusBadge(status: SubscriptionStatus) {
     SubscriptionStatus,
     { tone: 'success' | 'warning' | 'critical' | 'info'; label: string }
   > = {
+    trial: { tone: 'info', label: 'Free trial' },
     active: { tone: 'success', label: 'Active' },
     pending: { tone: 'warning', label: 'Pending approval' },
     cancelled: { tone: 'critical', label: 'Cancelled' },

@@ -135,7 +135,10 @@ export default function DashboardPage() {
     );
   }
 
-  const hasNoSubscription = !subscription?.planId || subscription.status === 'cancelled';
+  const hasNoSubscription =
+    !subscription?.planId ||
+    subscription.status === 'cancelled' ||
+    subscription.status == null;
 
   return (
     <Page
@@ -197,6 +200,8 @@ export default function DashboardPage() {
                       tone={
                         subscription?.status === 'active'
                           ? 'success'
+                          : subscription?.status === 'trial'
+                          ? 'info'
                           : subscription?.status === 'pending'
                           ? 'warning'
                           : 'critical'

@@ -32,24 +32,25 @@ export async function getPlans(): Promise<Plan[]> {
  * Subscribes the merchant to a billing plan.
  *
  * Flow:
- * 1. Frontend calls this with the selected plan
- * 2. Backend creates a Shopify recurring charge and returns confirmationUrl
- * 3. Frontend redirects to confirmationUrl (Shopify billing approval page)
- * 4. Merchant approves → Shopify redirects to backend callback
- * 5. Backend validates → redirects to APP_UI_URL/billing/return?status=success
+ * 1. Frontend calls this with the selected plan slug
+ * 2. Backend reads shop_domain from the Shopify session token automatically
+ * 3. Backend creates a Shopify recurring charge and returns confirmationUrl
+ * 4. Frontend redirects to confirmationUrl (Shopify billing approval page)
+ * 5. Merchant approves → Shopify redirects to backend callback
+ * 6. Backend validates → redirects to APP_UI_URL/billing/return?status=success
  *
- * @assumed endpoint: POST /billing/subscribe
- * @assumed response: BillingSubscribeResponse { confirmationUrl: string }
+ * The Authorization header is attached automatically by apiFetch().
+ *
+ * @confirmed endpoint: POST /billing/subscribe
+ * @confirmed body: { plan_slug: string }
+ * @confirmed response: BillingSubscribeResponse { confirmationUrl: string }
  */
 export async function subscribeToPlan(
-  plan: BillingSubscribeRequest['plan'],
-  returnUrl: string
+  planSlug: BillingSubscribeRequest['plan_slug']
 ): Promise<BillingSubscribeResponse> {
-  const body: BillingSubscribeRequest = { plan, returnUrl };
-
   return apiFetch<BillingSubscribeResponse>('/billing/subscribe', {
     method: 'POST',
-    body: JSON.stringify(body),
+    body: JSON.stringify({ plan_slug: planSlug }),
   });
 }
 
