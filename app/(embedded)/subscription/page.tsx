@@ -29,7 +29,7 @@ import {
   Modal,
 } from '@shopify/polaris';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
-import { getSubscription } from '@/lib/api/subscription';
+import { useMerchantContext } from '@/hooks/useMerchantContext';
 import { cancelSubscription } from '@/lib/api/billing';
 import { ApiError } from '@/lib/api/client';
 import type { SubscriptionStatus } from '@/types/api';
@@ -68,15 +68,11 @@ export default function SubscriptionPage() {
   const [cancelModalOpen, setCancelModalOpen] = useState(false);
 
   const {
-    data: subscription,
+    subscription,
     isLoading,
     isError,
     error,
-  } = useQuery({
-    queryKey: ['subscription'],
-    queryFn: getSubscription,
-    staleTime: 30_000,
-  });
+  } = useMerchantContext();
 
   const cancelMutation = useMutation({
     mutationFn: cancelSubscription,

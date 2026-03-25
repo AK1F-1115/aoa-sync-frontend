@@ -5,10 +5,13 @@
  *
  * Plans page — allows merchants to select and subscribe to a billing plan.
  *
+ * Plans are defined statically in lib/plans.ts rather than fetched from the
+ * API (standard practice for Shopify apps with a small fixed plan set).
+ *
  * Flow:
- * 1. Loads available plans from backend (GET /billing/plans)
+ * 1. Displays STATIC_PLANS
  * 2. Merchant selects a plan
- * 3. Merchant clicks "Subscribe" → POST /billing/subscribe
+ * 3. Merchant clicks "Subscribe" → POST /billing/subscribe { plan_slug }
  * 4. Backend returns confirmationUrl
  * 5. Frontend redirects to Shopify billing confirmation page
  * 6. After approval, Shopify → backend callback → /billing/return?status=success
@@ -26,24 +29,24 @@ import {
   BlockStack,
   InlineStack,
   List,
-  SkeletonPage,
-  SkeletonBodyText,
   Divider,
   Modal,
 } from '@shopify/polaris';
-import { useQuery, useMutation } from '@tanstack/react-query';
-import { getPlans, subscribeToPlan } from '@/lib/api/billing';
+import { useMutation } from '@tanstack/react-query';
+import { subscribeToPlan } from '@/lib/api/billing';
+import { useMerchantContext } from '@/hooks/useMerchantContext';
+import { STATIC_PLANS } from '@/lib/plans';
 import { ApiError } from '@/lib/api/client';
-import type { Plan, BillingPlanId } from '@/types/api';
+import type { StaticPlan } from '@/lib/plans';
 
 // ---------------------------------------------------------------------------
 // Plan card
 // ---------------------------------------------------------------------------
 
 interface PlanCardProps {
-  plan: Plan;
+  plan: StaticPlan;
   isCurrentPlan: boolean;
-  onSelect: (planId: BillingPlanId) => void;
+  onSelect: (slug: string) => void;
   isLoading: boolean;
 }
 
@@ -85,7 +88,7 @@ function PlanCard({ plan, isCurrentPlan, onSelect, isLoading }: PlanCardProps) {
           variant={isCurrentPlan ? 'plain' : 'primary'}
           disabled={isCurrentPlan || isLoading}
           loading={isLoading}
-          onClick={() => onSelect(plan.id)}
+          onClick={() => onSelect(plan.slug)}
           fullWidth
         >
           {isCurrentPlan ? 'Current plan' : `Subscribe to ${plan.name}`}
@@ -100,71 +103,43 @@ function PlanCard({ plan, isCurrentPlan, onSelect, isLoading }: PlanCardProps) {
 // ---------------------------------------------------------------------------
 
 export default function PlansPage() {
-  const [selectedPlan, setSelectedPlan] = useState<BillingPlanId | null>(null);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
 
-  const {
-    data: plans,
-    isLoading: plansLoading,
-    isError: plansError,
-  } = useQuery({
-    queryKey: ['plans'],
-    queryFn: getPlans,
-    staleTime: 5 * 60_000,
-  });
+  // Get current plan slug from already-loaded merchant context (no extra fetch)
+  const { subscription } = useMerchantContext();
+  const currentPlanSlug = subscription?.planId ?? null;
 
   const subscribeMutation = useMutation({
-    mutationFn: (planId: BillingPlanId) => subscribeToPlan(planId),
+    mutationFn: (slug: string) => subscribeToPlan(slug),
     onSuccess: (data: { confirmationUrl: string }) => {
       // Redirect to Shopify's billing confirmation page
       // This takes the merchant outside the app temporarily
-      window.top?.location.assign(data.confirmationUrl) ??
+      if (window.top) {
+        window.top.location.assign(data.confirmationUrl);
+      } else {
         window.location.assign(data.confirmationUrl);
+      }
     },
     onError: (error: unknown) => {
-      // Error is displayed via subscribeMutation.error
       if (process.env.NODE_ENV === 'development') {
         console.error('[Plans] Subscribe failed:', error);
       }
     },
   });
 
-  const handlePlanSelect = (planId: BillingPlanId): void => {
-    setSelectedPlan(planId);
+  const handlePlanSelect = (slug: string): void => {
+    setSelectedSlug(slug);
     setConfirmModalOpen(true);
   };
 
   const handleConfirmSubscribe = (): void => {
-    if (!selectedPlan) return;
-    subscribeMutation.mutate(selectedPlan);
+    if (!selectedSlug) return;
+    subscribeMutation.mutate(selectedSlug);
     setConfirmModalOpen(false);
   };
 
-  if (plansLoading) {
-    return (
-      <SkeletonPage title="Plans">
-        <Layout>
-          {[1, 2, 3].map((i) => (
-            <Layout.Section variant="oneThird" key={i}>
-              <Card>
-                <SkeletonBodyText lines={6} />
-              </Card>
-            </Layout.Section>
-          ))}
-        </Layout>
-      </SkeletonPage>
-    );
-  }
-
-  if (plansError) {
-    return (
-      <Page title="Plans">
-        <Banner title="Could not load plans" tone="critical">
-          <Text as="p">Please reload the page to try again.</Text>
-        </Banner>
-      </Page>
-    );
-  }
+  const selectedPlan = STATIC_PLANS.find((p) => p.slug === selectedSlug);
 
   return (
     <Page
@@ -183,14 +158,14 @@ export default function PlansPage() {
         )}
 
         <Layout>
-          {(plans ?? []).map((plan: Plan) => (
-            <Layout.Section variant="oneThird" key={plan.id}>
+          {STATIC_PLANS.map((plan: StaticPlan) => (
+            <Layout.Section variant="oneThird" key={plan.slug}>
               <PlanCard
                 plan={plan}
-                isCurrentPlan={false} // TODO: compare with current subscription
+                isCurrentPlan={plan.slug === currentPlanSlug}
                 onSelect={handlePlanSelect}
                 isLoading={
-                  subscribeMutation.isPending && selectedPlan === plan.id
+                  subscribeMutation.isPending && selectedSlug === plan.slug
                 }
               />
             </Layout.Section>
@@ -218,10 +193,8 @@ export default function PlansPage() {
             <Modal.Section>
               <Text as="p">
                 You&apos;re about to subscribe to the{' '}
-                <strong>
-                  {plans?.find((p: Plan) => p.id === selectedPlan)?.name}
-                </strong>{' '}
-                plan. You&apos;ll be taken to Shopify to confirm your billing details.
+                <strong>{selectedPlan.name}</strong> plan. You&apos;ll be taken
+                to Shopify to confirm your billing details.
               </Text>
             </Modal.Section>
           </Modal>
