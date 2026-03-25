@@ -215,22 +215,20 @@ export interface ShippingBootstrapResponse {
 }
 
 // ---------------------------------------------------------------------------
-// Products
+// Catalog
 // ---------------------------------------------------------------------------
 
-export type ProductStatus = 'active' | 'draft' | 'archived';
-
-/** A single product pushed from AOA to the merchant's Shopify store. */
-export interface StoreProduct {
-  /** Internal AOA product ID */
+/** A single product from GET /store/catalog */
+export interface CatalogProduct {
+  /** Internal AOA product / variant ID */
   id: string;
-  /** Shopify product GID or numeric ID */
+  /** Shopify product GID e.g. "gid://shopify/Product/123" */
   shopify_id: string;
   title: string;
-  vendor: string | null;
-  product_type: string | null;
-  handle: string;
-  status: ProductStatus;
+  /** Supplier / vendor name */
+  supplier: string | null;
+  category: string | null;
+  brand: string | null;
   /** Primary image URL */
   image_url: string | null;
   variants_count: number;
@@ -242,21 +240,47 @@ export interface StoreProduct {
   synced_at: string | null;
   /** SKU of the default / first variant */
   sku: string | null;
+  /** Fulfillment type */
+  fulfillment_type: 'warehouse' | 'dropship' | null;
+  /** Whether this product is in the retail or VDS price tier */
+  price_tier: 'retail' | 'vds' | 'wholesale' | null;
 }
 
-/** Paginated response from GET /store/products */
-export interface StoreProductsResponse {
-  products: StoreProduct[];
+/** Paginated response from GET /store/catalog */
+export interface CatalogResponse {
+  products: CatalogProduct[];
   total: number;
   page: number;
-  per_page: number;
+  page_size: number;
   pages: number;
 }
 
-/** Query params for GET /store/products */
-export interface StoreProductsParams {
+/** Query params for GET /store/catalog */
+export interface CatalogParams {
   page?: number;
-  per_page?: number;
+  page_size?: number;
   search?: string;
-  status?: ProductStatus;
+  supplier?: string;
+  category?: string;
+  brand?: string;
+}
+
+/** Top-level aggregate from GET /store/catalog/summary */
+export interface CatalogSummary {
+  /** Total synced products */
+  total_products: number;
+  /** Products on the retail price tier */
+  retail_count: number;
+  /** Products on the VDS price tier */
+  vds_count: number;
+  /** Variants assigned to warehouse fulfilment */
+  warehouse_count: number;
+  /** Variants assigned to dropship fulfilment */
+  dropship_count: number;
+  /** Top 15 categories by product count */
+  top_categories: { name: string; count: number }[];
+  /** Top 15 brands by product count */
+  top_brands: { name: string; count: number }[];
+  /** ISO timestamp of the most recent sync */
+  last_sync_at: string | null;
 }

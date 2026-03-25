@@ -1,32 +1,43 @@
 /**
  * lib/api/products.ts
  *
- * Products API — fetches products that AOA has synced to the merchant's store.
+ * Catalog API — fetches products and summary data for the merchant's catalog.
  *
- * Endpoint: GET /store/products
- * Auth: session token (authenticated)
+ * Endpoints (all authenticated with session token):
+ *   GET /store/catalog/summary  — aggregate snapshot (counts, top categories/brands)
+ *   GET /store/catalog          — paginated, filterable product list
  *
- * Supports pagination, keyword search, and status filtering.
+ * Multi-tenant safe: backend always filters by store_id from the session token.
  */
 
 import { apiFetch } from '@/lib/api/client';
-import type { StoreProductsResponse, StoreProductsParams } from '@/types/api';
+import type { CatalogResponse, CatalogParams, CatalogSummary } from '@/types/api';
 
 /**
- * Fetch a paginated, searchable list of products AOA has pushed to this store.
- *
- * @param params - Optional page, per_page, search, and status filters
+ * Fetch the instant aggregate snapshot for this store's catalog.
+ * Fast — no pagination, returns pre-aggregated counts and top-15 lists.
  */
-export async function getProducts(
-  params?: StoreProductsParams
-): Promise<StoreProductsResponse> {
+export async function getCatalogSummary(): Promise<CatalogSummary> {
+  return apiFetch<CatalogSummary>('/store/catalog/summary');
+}
+
+/**
+ * Fetch a paginated, filterable list of products in the store's catalog.
+ *
+ * @param params - page, page_size, search, supplier, category, brand
+ */
+export async function getCatalog(
+  params?: CatalogParams
+): Promise<CatalogResponse> {
   const query = new URLSearchParams();
 
-  if (params?.page != null)     query.set('page',     String(params.page));
-  if (params?.per_page != null) query.set('per_page', String(params.per_page));
-  if (params?.search)           query.set('search',   params.search);
-  if (params?.status)           query.set('status',   params.status);
+  if (params?.page      != null) query.set('page',      String(params.page));
+  if (params?.page_size != null) query.set('page_size', String(params.page_size));
+  if (params?.search)            query.set('search',    params.search);
+  if (params?.supplier)          query.set('supplier',  params.supplier);
+  if (params?.category)          query.set('category',  params.category);
+  if (params?.brand)             query.set('brand',     params.brand);
 
   const qs = query.toString();
-  return apiFetch<StoreProductsResponse>(`/store/products${qs ? `?${qs}` : ''}`);
+  return apiFetch<CatalogResponse>(`/store/catalog${qs ? `?${qs}` : ''}`);
 }

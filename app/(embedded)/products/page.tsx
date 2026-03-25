@@ -1,22 +1,6 @@
-'use client';
+﻿'use client';
 
-/**
- * app/(embedded)/products/page.tsx
- *
- * Products page — the central hub showing every product AOA has synced
- * from the wholesale catalogue into the merchant's Shopify store.
- *
- * Features:
- * - Live search (debounced 400ms) by title, SKU, or vendor
- * - Status tabs: All / Active / Draft / Archived
- * - IndexTable with thumbnail, title, SKU, vendor, price range, status badge,
- *   and last-synced date
- * - Pagination (25 products per page, keepPreviousData to avoid flash)
- * - Empty states for "never synced" and "no results"
- * - Error banner with retry
- */
-
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import {
   Page,
   Card,
@@ -32,86 +16,119 @@ import {
   EmptyState,
   SkeletonPage,
   SkeletonBodyText,
-  Tabs,
   Box,
   Divider,
+  Select,
+  Layout,
+  Spinner,
 } from '@shopify/polaris';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
-import { getProducts } from '@/lib/api/products';
+import { getCatalog, getCatalogSummary } from '@/lib/api/products';
 import { ApiError } from '@/lib/api/client';
-import type { StoreProduct, ProductStatus } from '@/types/api';
+import type { CatalogProduct, CatalogSummary } from '@/types/api';
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-
-const PER_PAGE = 25;
-
-const STATUS_TABS = [
-  { id: 'all',      content: 'All'      },
-  { id: 'active',   content: 'Active'   },
-  { id: 'draft',    content: 'Draft'    },
-  { id: 'archived', content: 'Archived' },
-];
-
-const STATUS_FILTER: (ProductStatus | null)[] = [null, 'active', 'draft', 'archived'];
-
-const STATUS_TONE: Record<ProductStatus, 'success' | 'warning' | 'critical'> = {
-  active:   'success',
-  draft:    'warning',
-  archived: 'critical',
-};
-
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+const PAGE_SIZE = 25;
 
 function formatPrice(min: string, max: string): string {
   const lo = parseFloat(min);
   const hi = parseFloat(max);
   if (isNaN(lo)) return '—';
-  if (lo === hi)  return `$${lo.toFixed(2)}`;
+  if (lo === hi) return `$${lo.toFixed(2)}`;
   return `$${lo.toFixed(2)} – $${hi.toFixed(2)}`;
 }
 
 function formatDate(iso: string | null): string {
   if (!iso) return '—';
   return new Date(iso).toLocaleDateString(undefined, {
-    year:  'numeric',
-    month: 'short',
-    day:   'numeric',
+    year: 'numeric', month: 'short', day: 'numeric',
   });
 }
 
-function capitalize(s: string): string {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+function formatDateTime(iso: string | null): string {
+  if (!iso) return 'Never';
+  return new Date(iso).toLocaleString(undefined, {
+    year: 'numeric', month: 'short', day: 'numeric',
+    hour: '2-digit', minute: '2-digit',
+  });
 }
 
-// ---------------------------------------------------------------------------
-// Page
-// ---------------------------------------------------------------------------
+function SummaryBar({ summary, isLoading }: { summary: CatalogSummary | undefined; isLoading: boolean }) {
+  if (isLoading && !summary) {
+    return (
+      <Card>
+        <SkeletonBodyText lines={2} />
+      </Card>
+    );
+  }
+  if (!summary) return null;
+
+  const stats = [
+    { label: 'Total products', value: summary.total_products.toLocaleString() },
+    { label: 'Retail',         value: summary.retail_count.toLocaleString()   },
+    { label: 'VDS',            value: summary.vds_count.toLocaleString()       },
+    { label: 'Warehouse',      value: summary.warehouse_count.toLocaleString() },
+    { label: 'Dropship',       value: summary.dropship_count.toLocaleString()  },
+    { label: 'Last sync',      value: formatDateTime(summary.last_sync_at)     },
+  ];
+
+  return (
+    <Card>
+      <InlineStack gap="600" wrap>
+        {stats.map(({ label, value }) => (
+          <BlockStack gap="050" key={label}>
+            <Text as="span" tone="subdued" variant="bodySm">{label}</Text>
+            <Text as="span" fontWeight="semibold" variant="bodyMd">{value}</Text>
+          </BlockStack>
+        ))}
+      </InlineStack>
+    </Card>
+  );
+}
+
+function toSelectOptions(
+  items: { name: string; count: number }[],
+  placeholder: string
+): { label: string; value: string }[] {
+  return [
+    { label: placeholder, value: '' },
+    ...items.map((i) => ({ label: `${i.name} (${i.count})`, value: i.name })),
+  ];
+}
 
 export default function ProductsPage() {
   const [page, setPage] = useState(1);
   const [searchValue, setSearchValue] = useState('');
   const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [selectedStatusTab, setSelectedStatusTab] = useState(0);
+  const [supplierFilter, setSupplierFilter] = useState('');
+  const [categoryFilter, setCategoryFilter] = useState('');
+  const [brandFilter, setBrandFilter] = useState('');
 
-  // Debounce search input — reset to page 1 on new query
   useEffect(() => {
-    const t = setTimeout(() => {
-      setDebouncedSearch(searchValue);
-      setPage(1);
-    }, 400);
+    const t = setTimeout(() => { setDebouncedSearch(searchValue); setPage(1); }, 400);
     return () => clearTimeout(t);
   }, [searchValue]);
 
-  // Reset to page 1 when status filter changes
-  useEffect(() => {
-    setPage(1);
-  }, [selectedStatusTab]);
+  const handleSupplier = useCallback((v: string) => { setSupplierFilter(v); setPage(1); }, []);
+  const handleCategory = useCallback((v: string) => { setCategoryFilter(v); setPage(1); }, []);
+  const handleBrand    = useCallback((v: string) => { setBrandFilter(v);    setPage(1); }, []);
 
-  const statusFilter = STATUS_FILTER[selectedStatusTab] ?? null;
+  const clearFilters = () => {
+    setSearchValue('');
+    setDebouncedSearch('');
+    setSupplierFilter('');
+    setCategoryFilter('');
+    setBrandFilter('');
+    setPage(1);
+  };
+
+  const {
+    data: summary,
+    isLoading: summaryLoading,
+  } = useQuery({
+    queryKey: ['catalogSummary'],
+    queryFn: getCatalogSummary,
+    staleTime: 2 * 60_000,
+  });
 
   const {
     data,
@@ -121,40 +138,44 @@ export default function ProductsPage() {
     error,
     refetch,
   } = useQuery({
-    queryKey: ['products', page, debouncedSearch, statusFilter],
+    queryKey: ['catalog', page, debouncedSearch, supplierFilter, categoryFilter, brandFilter],
     queryFn: () =>
-      getProducts({
+      getCatalog({
         page,
-        per_page: PER_PAGE,
-        search:   debouncedSearch || undefined,
-        status:   statusFilter   ?? undefined,
+        page_size: PAGE_SIZE,
+        search:    debouncedSearch || undefined,
+        supplier:  supplierFilter  || undefined,
+        category:  categoryFilter  || undefined,
+        brand:     brandFilter     || undefined,
       }),
     placeholderData: keepPreviousData,
     staleTime: 60_000,
   });
 
-  const products: StoreProduct[] = data?.products ?? [];
-  const total   = data?.total   ?? 0;
-  const pages   = data?.pages   ?? 1;
+  const products: CatalogProduct[] = data?.products ?? [];
+  const total = data?.total ?? 0;
+  const pages = data?.pages ?? 1;
 
-  const hasFilters = Boolean(debouncedSearch || statusFilter);
+  const hasFilters = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
 
-  // ---------------------------------------------------------------------------
-  // Table rows
-  // ---------------------------------------------------------------------------
+  const categoryOptions = toSelectOptions(summary?.top_categories ?? [], 'All categories');
+  const brandOptions    = toSelectOptions(summary?.top_brands     ?? [], 'All brands');
 
   const headings = [
     { title: 'Product'     },
     { title: 'SKU'         },
-    { title: 'Vendor'      },
+    { title: 'Category'    },
+    { title: 'Brand'       },
     { title: 'Price'       },
-    { title: 'Status'      },
+    { title: 'Fulfilment'  },
     { title: 'Last synced' },
   ] as [{ title: string }, ...{ title: string }[]];
 
+  const fulfilmentTone = (type: CatalogProduct['fulfillment_type']) =>
+    type === 'warehouse' ? ('info' as const) : type === 'dropship' ? ('warning' as const) : undefined;
+
   const rowMarkup = products.map((product, index) => (
     <IndexTable.Row id={product.id} key={product.id} position={index}>
-      {/* Product — thumbnail + title + type */}
       <IndexTable.Cell>
         <InlineStack gap="300" blockAlign="center">
           <Thumbnail
@@ -164,61 +185,49 @@ export default function ProductsPage() {
           />
           <BlockStack gap="050">
             <Text fontWeight="semibold" as="span">{product.title}</Text>
-            {product.product_type && (
-              <Text tone="subdued" variant="bodySm" as="span">
-                {product.product_type}
-              </Text>
+            {product.supplier && (
+              <Text tone="subdued" variant="bodySm" as="span">{product.supplier}</Text>
             )}
           </BlockStack>
         </InlineStack>
       </IndexTable.Cell>
-
-      {/* SKU */}
       <IndexTable.Cell>
         <Text as="span" tone="subdued">{product.sku ?? '—'}</Text>
       </IndexTable.Cell>
-
-      {/* Vendor */}
       <IndexTable.Cell>
-        <Text as="span">{product.vendor ?? '—'}</Text>
+        <Text as="span">{product.category ?? '—'}</Text>
       </IndexTable.Cell>
-
-      {/* Price range */}
+      <IndexTable.Cell>
+        <Text as="span">{product.brand ?? '—'}</Text>
+      </IndexTable.Cell>
       <IndexTable.Cell>
         <Text as="span">{formatPrice(product.price_min, product.price_max)}</Text>
       </IndexTable.Cell>
-
-      {/* Status badge */}
       <IndexTable.Cell>
-        <Badge tone={STATUS_TONE[product.status]}>
-          {capitalize(product.status)}
-        </Badge>
+        {product.fulfillment_type ? (
+          <Badge tone={fulfilmentTone(product.fulfillment_type)}>
+            {product.fulfillment_type.charAt(0).toUpperCase() + product.fulfillment_type.slice(1)}
+          </Badge>
+        ) : (
+          <Text as="span" tone="subdued">—</Text>
+        )}
       </IndexTable.Cell>
-
-      {/* Last synced */}
       <IndexTable.Cell>
         <Text as="span" tone="subdued">{formatDate(product.synced_at)}</Text>
       </IndexTable.Cell>
     </IndexTable.Row>
   ));
 
-  // ---------------------------------------------------------------------------
-  // Loading skeleton (first load only)
-  // ---------------------------------------------------------------------------
-
   if (isLoading && !data) {
     return (
       <SkeletonPage title="Products">
-        <Card>
-          <SkeletonBodyText lines={10} />
-        </Card>
+        <BlockStack gap="400">
+          <Card><SkeletonBodyText lines={2} /></Card>
+          <Card><SkeletonBodyText lines={12} /></Card>
+        </BlockStack>
       </SkeletonPage>
     );
   }
-
-  // ---------------------------------------------------------------------------
-  // Render
-  // ---------------------------------------------------------------------------
 
   return (
     <Page
@@ -230,7 +239,8 @@ export default function ProductsPage() {
       }
     >
       <BlockStack gap="400">
-        {/* Error banner */}
+        <SummaryBar summary={summary} isLoading={summaryLoading} />
+
         {isError && (
           <Banner
             title="Could not load products"
@@ -245,66 +255,89 @@ export default function ProductsPage() {
           </Banner>
         )}
 
-        {/* Main card */}
         <Card padding="0">
-          {/* Search bar */}
           <Box padding="400">
-            <TextField
-              label="Search products"
-              labelHidden
-              placeholder="Search by name, SKU, or vendor…"
-              value={searchValue}
-              onChange={(v) => setSearchValue(v)}
-              clearButton
-              onClearButtonClick={() => setSearchValue('')}
-              autoComplete="off"
-            />
+            <BlockStack gap="300">
+              <TextField
+                label="Search products"
+                labelHidden
+                placeholder="Search by name, SKU, brand, or category..."
+                value={searchValue}
+                onChange={(v) => setSearchValue(v)}
+                clearButton
+                onClearButtonClick={() => setSearchValue('')}
+                autoComplete="off"
+              />
+              <Layout>
+                <Layout.Section variant="oneThird">
+                  <Select
+                    label="Category"
+                    options={categoryOptions}
+                    value={categoryFilter}
+                    onChange={handleCategory}
+                  />
+                </Layout.Section>
+                <Layout.Section variant="oneThird">
+                  <Select
+                    label="Brand"
+                    options={brandOptions}
+                    value={brandFilter}
+                    onChange={handleBrand}
+                  />
+                </Layout.Section>
+                <Layout.Section variant="oneThird">
+                  {hasFilters && (
+                    <Box paddingBlockStart="600">
+                      <button
+                        onClick={clearFilters}
+                        style={{
+                          background: 'none', border: 'none',
+                          cursor: 'pointer', padding: 0,
+                          color: 'var(--p-color-text-emphasis)',
+                          textDecoration: 'underline',
+                          fontSize: '0.875rem',
+                        }}
+                      >
+                        Clear filters
+                      </button>
+                    </Box>
+                  )}
+                </Layout.Section>
+              </Layout>
+            </BlockStack>
           </Box>
 
           <Divider />
 
-          {/* Status filter tabs + table content */}
-          <Tabs
-            tabs={STATUS_TABS}
-            selected={selectedStatusTab}
-            onSelect={setSelectedStatusTab}
-          >
-            {/* Empty state */}
-            {!isError && !isFetching && products.length === 0 ? (
-              <Box paddingBlockStart="600" paddingBlockEnd="600">
-                <EmptyState
-                  heading={
-                    hasFilters
-                      ? 'No products match your filters'
-                      : 'No products synced yet'
-                  }
-                  image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
-                >
-                  <Text as="p">
-                    {hasFilters
-                      ? 'Try adjusting your search or removing filters.'
-                      : 'Products will appear here once AOA Sync has run for your store.'}
-                  </Text>
-                </EmptyState>
-              </Box>
-            ) : (
-              /* Products table */
-              <IndexTable
-                resourceName={{ singular: 'product', plural: 'products' }}
-                itemCount={products.length}
-                headings={headings}
-                selectable={false}
-                loading={isFetching}
+          {!isError && !isFetching && products.length === 0 ? (
+            <Box paddingBlockStart="600" paddingBlockEnd="600">
+              <EmptyState
+                heading={hasFilters ? 'No products match your filters' : 'No products synced yet'}
+                image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
               >
-                {rowMarkup}
-              </IndexTable>
-            )}
-          </Tabs>
+                <Text as="p">
+                  {hasFilters
+                    ? 'Try adjusting your search or removing filters.'
+                    : 'Products will appear here once AOA Sync has run for your store.'}
+                </Text>
+              </EmptyState>
+            </Box>
+          ) : (
+            <IndexTable
+              resourceName={{ singular: 'product', plural: 'products' }}
+              itemCount={products.length}
+              headings={headings}
+              selectable={false}
+              loading={isFetching}
+            >
+              {rowMarkup}
+            </IndexTable>
+          )}
         </Card>
 
-        {/* Pagination — only shown when there are multiple pages */}
         {pages > 1 && (
-          <InlineStack align="center">
+          <InlineStack align="center" gap="200" blockAlign="center">
+            {isFetching && <Spinner size="small" />}
             <Pagination
               hasPrevious={page > 1}
               onPrevious={() => setPage((p) => p - 1)}
