@@ -63,12 +63,12 @@ function SummaryBar({ summary, isLoading }: { summary: CatalogSummary | undefine
   if (!summary) return null;
 
   const stats = [
-    { label: 'Total products', value: summary.total_products.toLocaleString() },
-    { label: 'Retail',         value: summary.retail_count.toLocaleString()   },
-    { label: 'VDS',            value: summary.vds_count.toLocaleString()       },
-    { label: 'Warehouse',      value: summary.warehouse_count.toLocaleString() },
-    { label: 'Dropship',       value: summary.dropship_count.toLocaleString()  },
-    { label: 'Last sync',      value: formatDateTime(summary.last_sync_at)     },
+    { label: 'Total products', value: (summary.total_products  ?? 0).toLocaleString() },
+    { label: 'Retail',         value: (summary.retail_count    ?? 0).toLocaleString() },
+    { label: 'VDS',            value: (summary.vds_count       ?? 0).toLocaleString() },
+    { label: 'Warehouse',      value: (summary.warehouse_count ?? 0).toLocaleString() },
+    { label: 'Dropship',       value: (summary.dropship_count  ?? 0).toLocaleString() },
+    { label: 'Last sync',      value: formatDateTime(summary.last_sync_at)            },
   ];
 
   return (
