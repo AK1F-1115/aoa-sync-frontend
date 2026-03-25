@@ -36,6 +36,17 @@ function getShopify(): ShopifyGlobal {
 }
 
 /**
+ * Returns true if the app is running inside the Shopify Admin iframe
+ * (i.e. App Bridge has initialized and window.shopify is available).
+ *
+ * Use this to guard API calls or show a "not embedded" message.
+ */
+export function isEmbedded(): boolean {
+  if (typeof window === 'undefined') return false;
+  return !!(window as unknown as { shopify?: ShopifyGlobal }).shopify;
+}
+
+/**
  * Retrieves a fresh Shopify ID token from App Bridge v4.
  *
  * This token is a signed JWT that:
@@ -69,12 +80,4 @@ export function showToast(
   }
 }
 
-/**
- * Returns whether the app is running in an embedded Shopify context.
- * Checks for the shopify global variable as a signal.
- */
-export function isEmbedded(): boolean {
-  if (typeof window === 'undefined') return false;
-  return !!(window as unknown as { shopify?: ShopifyGlobal }).shopify;
-}
 
