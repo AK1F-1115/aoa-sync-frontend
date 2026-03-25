@@ -34,12 +34,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPlans, subscribeToPlan, cancelSubscription } from '@/lib/api/billing';
 import { getSettings, updateSettings } from '@/lib/api/settings';
 import { getCollections, bootstrapCollections } from '@/lib/api/collections';
+import { getShipping, bootstrapShipping } from '@/lib/api/shipping';
 import { useMerchantContext } from '@/hooks/useMerchantContext';
 import { STATIC_PLANS } from '@/lib/plans';
 import { ApiError } from '@/lib/api/client';
 import type { StaticPlan } from '@/lib/plans';
 import type { SyncHealth } from '@/types/merchant';
-import type { SubscriptionInfo } from '@/types/api';
+import type { SubscriptionInfo, ShippingState } from '@/types/api';
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -50,6 +51,7 @@ const TABS = [
   { id: 'sync',        content: 'Sync Health'  },
   { id: 'markup',      content: 'Markup'       },
   { id: 'collections', content: 'Collections'  },
+  { id: 'shipping',    content: 'Shipping'     },
 ];
 
 // ---------------------------------------------------------------------------
@@ -681,12 +683,285 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
 }
 
 // ---------------------------------------------------------------------------
+// Shipping Tab
+// ---------------------------------------------------------------------------
+
+function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
+  const queryClient = useQueryClient();
+
+  // 503 scope-missing error is stored separately — React Query swallows it
+  // after retry; we want to persist the message for the user.
+  const [scopeError, setScopeError] = useState<string | null>(null);
+
+  const {
+    data: shipping,
+    isLoading,
+    isError: shippingLoadError,
+    error: shippingErr,
+    refetch: refetchShipping,
+  } = useQuery({
+    queryKey: ['shipping'],
+    queryFn: getShipping,
+    staleTime: 60_000,
+  });
+
+  const toggleAutoMutation = useMutation({
+    mutationFn: (enabled: boolean) =>
+      updateSettings({ auto_shipping_profiles: enabled }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
+      void queryClient.invalidateQueries({ queryKey: ['shipping'] });
+      setScopeError(null);
+    },
+  });
+
+  const bootstrapMutation = useMutation({
+    mutationFn: bootstrapShipping,
+    onSuccess: (data) => {
+      if (!data.skipped) {
+        void queryClient.invalidateQueries({ queryKey: ['shipping'] });
+      }
+      setScopeError(null);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 503) {
+        setScopeError(err.message);
+        // Backend disabled auto_shipping_profiles — refetch settings + shipping
+        void queryClient.invalidateQueries({ queryKey: ['settings'] });
+        void queryClient.invalidateQueries({ queryKey: ['shipping'] });
+      }
+    },
+  });
+
+  const adminShippingUrl = shopDomain
+    ? `https://${shopDomain}/admin/settings/shipping`
+    : null;
+
+  if (isLoading) return <Card><SkeletonBodyText lines={6} /></Card>;
+
+  if (shippingLoadError) {
+    return (
+      <Banner title="Could not load shipping status" tone="critical"
+        action={{ content: 'Retry', onAction: refetchShipping }}>
+        <Text as="p">
+          {shippingErr instanceof ApiError
+            ? shippingErr.message
+            : 'An unexpected error occurred.'}
+        </Text>
+      </Banner>
+    );
+  }
+
+  const autoEnabled   = shipping?.auto_shipping_profiles ?? true;
+  const bootstrapped  = shipping?.shipping_profiles_bootstrapped ?? false;
+  const warehouseCount = shipping?.warehouse_products ?? 0;
+  const dropshipCount  = shipping?.dropship_products  ?? 0;
+
+  return (
+    <BlockStack gap="400">
+      {/* 503 scope-missing error */}
+      {scopeError && (
+        <Banner title="Permission required" tone="critical">
+          <BlockStack gap="200">
+            <Text as="p">{scopeError}</Text>
+            <Text as="p">
+              <strong>Step 1:</strong> Close and reopen the AOA Sync app from
+              your Shopify Admin sidebar — Shopify will prompt you to grant the
+              &nbsp;<code>write_shipping</code> permission.
+            </Text>
+            <Text as="p">
+              <strong>Step 2:</strong> Once permission is granted, re-enable
+              automatic shipping profiles using the button below, then click
+              &ldquo;Set up shipping profiles&rdquo;.
+            </Text>
+          </BlockStack>
+        </Banner>
+      )}
+
+      {/* Disabled state */}
+      {!autoEnabled && (
+        <Card>
+          <BlockStack gap="400">
+            <InlineStack align="space-between">
+              <BlockStack gap="100">
+                <Text variant="headingMd" as="h2">Shipping Profiles</Text>
+                <Text as="p" tone="subdued">
+                  Automatic shipping profile management is currently disabled.
+                </Text>
+              </BlockStack>
+              <Badge>Disabled</Badge>
+            </InlineStack>
+            <Divider />
+            <Text as="p" tone="subdued">
+              When enabled, AOA automatically maintains two shipping profiles in
+              your store — one for warehouse-fulfilled products and one for
+              dropship products. You then add your rates in Shopify&apos;s
+              shipping settings.
+            </Text>
+            <InlineStack>
+              <Button
+                variant="primary"
+                onClick={() => toggleAutoMutation.mutate(true)}
+                loading={toggleAutoMutation.isPending}
+              >
+                Enable automatic shipping profiles
+              </Button>
+            </InlineStack>
+            {toggleAutoMutation.isError && (
+              <Banner tone="critical">
+                <Text as="p">
+                  {toggleAutoMutation.error instanceof ApiError
+                    ? toggleAutoMutation.error.message
+                    : 'Could not update setting. Please try again.'}
+                </Text>
+              </Banner>
+            )}
+          </BlockStack>
+        </Card>
+      )}
+
+      {/* Enabled but not bootstrapped */}
+      {autoEnabled && !bootstrapped && (
+        <Banner
+          title="Shipping profiles not configured"
+          tone="warning"
+        >
+          <BlockStack gap="300">
+            <Text as="p">
+              AOA automatically creates two shipping profiles in your store —
+              one for warehouse-fulfilled products and one for dropship products.
+              Set them up now, then go to Shopify Settings &rarr; Shipping to
+              add your carrier rates.
+            </Text>
+            <InlineStack gap="300" blockAlign="center">
+              <Button
+                variant="primary"
+                onClick={() => bootstrapMutation.mutate()}
+                loading={bootstrapMutation.isPending}
+                disabled={bootstrapMutation.isPending}
+              >
+                Set up shipping profiles
+              </Button>
+              <Button
+                variant="plain"
+                tone="critical"
+                onClick={() => toggleAutoMutation.mutate(false)}
+                loading={toggleAutoMutation.isPending}
+                disabled={bootstrapMutation.isPending}
+              >
+                Disable
+              </Button>
+            </InlineStack>
+            {bootstrapMutation.isPending && (
+              <Text as="p" tone="subdued">
+                Setting up shipping profiles — this may take up to 2 minutes
+                for large stores. Please wait&hellip;
+              </Text>
+            )}
+            {bootstrapMutation.isError && !scopeError && (
+              <Banner tone="critical">
+                <Text as="p">
+                  {bootstrapMutation.error instanceof ApiError
+                    ? bootstrapMutation.error.message
+                    : 'An unexpected error occurred. Please try again.'}
+                </Text>
+              </Banner>
+            )}
+          </BlockStack>
+        </Banner>
+      )}
+
+      {/* Bootstrapped — show counts and admin link */}
+      {autoEnabled && bootstrapped && (
+        <Card>
+          <BlockStack gap="400">
+            <InlineStack align="space-between">
+              <Text variant="headingMd" as="h2">Shipping Profiles</Text>
+              <Badge tone="success">Active</Badge>
+            </InlineStack>
+            <Divider />
+            <InlineStack gap="600">
+              <BlockStack gap="100">
+                <Text as="span" tone="subdued" variant="bodySm">Warehouse</Text>
+                <Text as="span" fontWeight="medium">
+                  {warehouseCount.toLocaleString()} product
+                  {warehouseCount !== 1 ? 's' : ''}
+                </Text>
+              </BlockStack>
+              <BlockStack gap="100">
+                <Text as="span" tone="subdued" variant="bodySm">Dropship</Text>
+                <Text as="span" fontWeight="medium">
+                  {dropshipCount.toLocaleString()} product
+                  {dropshipCount !== 1 ? 's' : ''}
+                </Text>
+              </BlockStack>
+            </InlineStack>
+            <Divider />
+            <InlineStack gap="400" align="space-between">
+              <InlineStack gap="300">
+                {adminShippingUrl && (
+                  <Button
+                    variant="plain"
+                    onClick={() =>
+                      window.open(adminShippingUrl, '_blank', 'noopener,noreferrer')
+                    }
+                  >
+                    View in Shopify Admin &rarr;
+                  </Button>
+                )}
+                <Button
+                  variant="plain"
+                  onClick={() => bootstrapMutation.mutate()}
+                  loading={bootstrapMutation.isPending}
+                  disabled={bootstrapMutation.isPending}
+                >
+                  Re-sync profiles
+                </Button>
+              </InlineStack>
+              <Button
+                variant="plain"
+                tone="critical"
+                onClick={() => toggleAutoMutation.mutate(false)}
+                loading={toggleAutoMutation.isPending}
+                disabled={bootstrapMutation.isPending}
+              >
+                Disable
+              </Button>
+            </InlineStack>
+            {bootstrapMutation.isPending && (
+              <Text as="p" tone="subdued">
+                Re-syncing profiles — this may take up to 2 minutes&hellip;
+              </Text>
+            )}
+            {bootstrapMutation.isError && !scopeError && (
+              <Banner tone="critical">
+                <Text as="p">
+                  {bootstrapMutation.error instanceof ApiError
+                    ? bootstrapMutation.error.message
+                    : 'An unexpected error occurred. Please try again.'}
+                </Text>
+              </Banner>
+            )}
+            {bootstrapMutation.isSuccess && !bootstrapMutation.data.skipped && (
+              <Banner title="Profiles updated" tone="success">
+                <Text as="p">{bootstrapMutation.data.message}</Text>
+              </Banner>
+            )}
+          </BlockStack>
+        </Card>
+      )}
+    </BlockStack>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function SettingsPage() {
   const [selectedTab, setSelectedTab] = useState(0);
   const {
+    shop,
     syncHealth,
     subscription,
     isLoading,
@@ -697,6 +972,8 @@ export default function SettingsPage() {
 
   const isFreePlan =
     !subscription?.planId || subscription.planId === 'free';
+
+  const shopDomain = shop?.domain;
 
   if (isLoading) {
     return (
@@ -731,7 +1008,7 @@ export default function SettingsPage() {
   return (
     <Page
       title="Settings"
-      subtitle="Billing, sync health, markup, and collections"
+      subtitle="Billing, sync health, markup, collections, and shipping"
     >
       <Tabs tabs={TABS} selected={selectedTab} onSelect={setSelectedTab}>
         <Box paddingBlockStart="500">
@@ -739,6 +1016,7 @@ export default function SettingsPage() {
           {selectedTab === 1 && <SyncHealthTab syncHealth={syncHealth} />}
           {selectedTab === 2 && <MarkupTab />}
           {selectedTab === 3 && <CollectionsTab isFreePlan={isFreePlan} />}
+          {selectedTab === 4 && <ShippingTab shopDomain={shopDomain} />}
         </Box>
       </Tabs>
     </Page>

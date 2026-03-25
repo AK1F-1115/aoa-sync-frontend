@@ -142,6 +142,10 @@ export interface StoreSettingsResponse {
   markup_pct_wholesale: number;
   collections_bootstrapped: boolean;
   collections_count: number;
+  /** Whether the backend should automatically manage shipping profiles */
+  auto_shipping_profiles: boolean;
+  /** true = profiles exist and all variants are assigned */
+  shipping_profiles_bootstrapped: boolean;
 }
 
 /** Request body for PATCH /store/settings — all fields optional */
@@ -149,6 +153,7 @@ export interface StoreSettingsUpdateRequest {
   markup_pct_retail?: number;
   markup_pct_vds?: number;
   markup_pct_wholesale?: number;
+  auto_shipping_profiles?: boolean;
 }
 
 /** Response from PATCH /store/settings */
@@ -179,6 +184,34 @@ export interface CollectionsBootstrapResponse {
   category_collections: number;
   brand_collections: number;
   total: number;
+}
+
+// ---------------------------------------------------------------------------
+// Shipping Profiles
+// ---------------------------------------------------------------------------
+
+/** Response from GET /store/shipping */
+export interface ShippingState {
+  shipping_profiles_bootstrapped: boolean;
+  auto_shipping_profiles: boolean;
+  warehouse_profile_gid: string | null;
+  dropship_profile_gid: string | null;
+  /** Count of variants assigned to the warehouse profile */
+  warehouse_products: number;
+  /** Count of variants assigned to the dropship profile */
+  dropship_products: number;
+}
+
+/** Success response from POST /store/shipping/bootstrap */
+export interface ShippingBootstrapResponse {
+  ok: boolean;
+  warehouse_products: number;
+  dropship_products: number;
+  /** true if profiles were newly created; false if they already existed */
+  created: boolean;
+  message: string;
+  /** true if bootstrap was skipped because auto_shipping_profiles=false */
+  skipped?: boolean;
 }
 
 // ---------------------------------------------------------------------------
