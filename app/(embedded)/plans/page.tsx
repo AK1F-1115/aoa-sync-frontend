@@ -66,11 +66,13 @@ function PlanCard({ plan, isCurrentPlan, onSelect, isLoading }: PlanCardProps) {
         </InlineStack>
 
         <Text variant="heading2xl" as="p">
-          ${plan.price}
-          <Text as="span" tone="subdued" variant="bodyMd">
-            {' '}
-            / month
-          </Text>
+          {plan.price === 0 ? 'Free' : `$${plan.price}`}
+          {plan.price > 0 && (
+            <Text as="span" tone="subdued" variant="bodyMd">
+              {' '}
+              / month
+            </Text>
+          )}
         </Text>
 
         {plan.trialDays && plan.trialDays > 0 && (
@@ -125,13 +127,13 @@ export default function PlansPage() {
 
   const subscribeMutation = useMutation({
     mutationFn: (slug: string) => subscribeToPlan(slug),
-    onSuccess: (data: { confirmationUrl: string }) => {
+    onSuccess: (data: { confirmation_url: string }) => {
       // Redirect to Shopify's billing confirmation page
       // This takes the merchant outside the app temporarily
       if (window.top) {
-        window.top.location.assign(data.confirmationUrl);
+        window.top.location.assign(data.confirmation_url);
       } else {
-        window.location.assign(data.confirmationUrl);
+        window.location.assign(data.confirmation_url);
       }
     },
     onError: (error: unknown) => {

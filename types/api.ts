@@ -23,8 +23,8 @@ export interface ApiErrorBody {
 // Billing Plans
 // ---------------------------------------------------------------------------
 
-/** @assumed — plan IDs based on typical Shopify billing plans */
-export type BillingPlanId = 'starter' | 'growth' | 'pro';
+/** @confirmed — plan slugs returned by GET /billing/plans */
+export type BillingPlanId = 'free' | 'starter' | 'growth' | 'pro';
 
 /** @assumed — plan shape returned from GET /billing/plans */
 export interface Plan {
@@ -43,7 +43,7 @@ export interface Plan {
 // ---------------------------------------------------------------------------
 
 /** Subscription status values returned by the backend. */
-export type SubscriptionStatus = 'trial' | 'active' | 'pending' | 'cancelled' | 'frozen' | 'expired';
+export type SubscriptionStatus = 'free' | 'trial' | 'active' | 'pending' | 'cancelled' | 'frozen' | 'expired';
 
 /** @assumed — subscription info shape returned from GET /subscription */
 export interface SubscriptionInfo {
@@ -71,23 +71,26 @@ export interface BillingSubscribeRequest {
   plan_slug: string;
 }
 
-/** @assumed — response from POST /billing/subscribe */
+/** Response from POST /billing/subscribe */
 export interface BillingSubscribeResponse {
   /**
-   * Shopify billing confirmation URL.
+   * Shopify billing confirmation URL (snake_case from backend).
    * Frontend must redirect the merchant to this URL.
    */
-  confirmationUrl: string;
+  confirmation_url: string;
 }
 
 // ---------------------------------------------------------------------------
 // Billing — Cancel
 // ---------------------------------------------------------------------------
 
-/** @assumed — response from POST /billing/cancel */
+/** Response from POST /store/billing/cancel */
 export interface BillingCancelResponse {
-  success: boolean;
-  message?: string;
+  ok: boolean;
+  /** ISO 8601 UTC — when the store's products will be removed */
+  cleanup_after: string;
+  /** Human-readable message to show the merchant */
+  message: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -125,4 +128,55 @@ export interface StoreMeResponse {
   products_synced: number;
   /** ISO 8601 UTC timestamp of last sync, or null */
   last_sync_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Settings
+// ---------------------------------------------------------------------------
+
+/** Response from GET /store/settings */
+export interface StoreSettingsResponse {
+  /** Decimal ratio e.g. 0.25 = 25% */
+  markup_pct_retail: number;
+  markup_pct_vds: number;
+  markup_pct_wholesale: number;
+  collections_bootstrapped: boolean;
+  collections_count: number;
+}
+
+/** Request body for PATCH /store/settings — all fields optional */
+export interface StoreSettingsUpdateRequest {
+  markup_pct_retail?: number;
+  markup_pct_vds?: number;
+  markup_pct_wholesale?: number;
+}
+
+/** Response from PATCH /store/settings */
+export interface StoreSettingsUpdateResponse {
+  ok: boolean;
+  markup_changed: boolean;
+  /** 'queued' | 'not_needed' */
+  price_sync: 'queued' | 'not_needed';
+  products_affected: number;
+}
+
+// ---------------------------------------------------------------------------
+// Collections
+// ---------------------------------------------------------------------------
+
+/** Response from GET /store/collections */
+export interface StoreCollectionsResponse {
+  collections_bootstrapped: boolean;
+  category_collections: number;
+  brand_collections: number;
+  total: number;
+}
+
+/** Response from POST /store/collections/bootstrap */
+export interface CollectionsBootstrapResponse {
+  ok: boolean;
+  collections_bootstrapped: boolean;
+  category_collections: number;
+  brand_collections: number;
+  total: number;
 }

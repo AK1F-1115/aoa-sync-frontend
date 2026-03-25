@@ -73,8 +73,21 @@ export async function apiFetch<T>(
     let code: string | undefined;
 
     try {
-      const body = (await response.json()) as { message?: string; code?: string };
-      if (body.message) message = body.message;
+      const body = (await response.json()) as {
+        // FastAPI uses 'detail' for error messages
+        detail?: string | { msg: string }[];
+        // Legacy / custom fields
+        message?: string;
+        code?: string;
+      };
+      // FastAPI default: { detail: "message" } or { detail: [{msg: "..."}] }
+      if (typeof body.detail === 'string') {
+        message = body.detail;
+      } else if (Array.isArray(body.detail) && body.detail[0]?.msg) {
+        message = body.detail[0].msg;
+      } else if (body.message) {
+        message = body.message;
+      }
       if (body.code) code = body.code;
     } catch {
       // Body was not JSON — use status text
@@ -120,8 +133,18 @@ export async function apiFetchPublic<T>(
     let code: string | undefined;
 
     try {
-      const body = (await response.json()) as { message?: string; code?: string };
-      if (body.message) message = body.message;
+      const body = (await response.json()) as {
+        detail?: string | { msg: string }[];
+        message?: string;
+        code?: string;
+      };
+      if (typeof body.detail === 'string') {
+        message = body.detail;
+      } else if (Array.isArray(body.detail) && body.detail[0]?.msg) {
+        message = body.detail[0].msg;
+      } else if (body.message) {
+        message = body.message;
+      }
       if (body.code) code = body.code;
     } catch {
       // Body was not JSON — use status text

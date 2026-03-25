@@ -137,8 +137,13 @@ export default function DashboardPage() {
 
   const hasNoSubscription =
     !subscription?.planId ||
+    subscription.planId === 'free' ||
     subscription.status === 'cancelled' ||
+    subscription.status === 'free' ||
     subscription.status == null;
+
+  const isOnTrial = subscription?.status === 'trial';
+  const trialDaysRemaining = isOnTrial ? (subscription?.trialDaysRemaining ?? null) : null;
 
   return (
     <Page
@@ -146,8 +151,21 @@ export default function DashboardPage() {
       subtitle={shop?.domain}
     >
       <BlockStack gap="500">
+        {/* Trial banner */}
+        {isOnTrial && (
+          <Banner
+            title={trialDaysRemaining !== null
+              ? `Free trial — ${trialDaysRemaining} day${trialDaysRemaining !== 1 ? 's' : ''} remaining`
+              : 'Free trial active'}
+            tone="info"
+            action={{ content: 'View plans', url: '/plans' }}
+          >
+            <p>Subscribe before your trial ends to keep your products synced to AOA Traders.</p>
+          </Banner>
+        )}
+
         {/* Upsell banner for merchants without an active plan */}
-        {hasNoSubscription && (
+        {hasNoSubscription && !isOnTrial && (
           <Banner
             title="No active plan"
             tone="warning"

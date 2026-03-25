@@ -90,11 +90,13 @@ export async function subscribeToPlan(
 /**
  * Cancels the current subscription.
  *
- * @assumed endpoint: POST /billing/cancel
- * @assumed response: BillingCancelResponse { success: boolean }
+ * Products stay live for 3 days after cancellation, then are removed.
+ *
+ * @confirmed endpoint: POST /store/billing/cancel
+ * @confirmed response: BillingCancelResponse { ok, cleanup_after, message }
  */
 export async function cancelSubscription(): Promise<BillingCancelResponse> {
-  return apiFetch<BillingCancelResponse>('/billing/cancel', {
+  return apiFetch<BillingCancelResponse>('/store/billing/cancel', {
     method: 'POST',
   });
 }

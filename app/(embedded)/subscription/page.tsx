@@ -43,6 +43,7 @@ function statusBadge(status: SubscriptionStatus) {
     SubscriptionStatus,
     { tone: 'success' | 'warning' | 'critical' | 'info'; label: string }
   > = {
+    free: { tone: 'info', label: 'Free' },
     trial: { tone: 'info', label: 'Free trial' },
     active: { tone: 'success', label: 'Active' },
     pending: { tone: 'warning', label: 'Pending approval' },
@@ -85,9 +86,13 @@ export default function SubscriptionPage() {
   });
 
   const isActive = subscription?.status === 'active';
+  const isTrial = subscription?.status === 'trial';
   const isPending = subscription?.status === 'pending';
   const isCancelled =
-    subscription?.status === 'cancelled' || subscription?.status === 'expired';
+    subscription?.status === 'cancelled' ||
+    subscription?.status === 'expired' ||
+    subscription?.status === 'free' ||
+    !subscription?.planId;
 
   if (isLoading) {
     return (
@@ -129,6 +134,12 @@ export default function SubscriptionPage() {
     >
       <BlockStack gap="500">
         {/* Status banners */}
+        {isTrial && subscription?.trialDaysRemaining !== null && subscription?.trialDaysRemaining !== undefined && (
+          <Banner title={`Free trial — ${subscription.trialDaysRemaining} day${subscription.trialDaysRemaining !== 1 ? 's' : ''} remaining`} tone="info">
+            <Text as="p">Subscribe before your trial ends to keep your products synced.</Text>
+          </Banner>
+        )}
+
         {isPending && (
           <Banner title="Subscription pending" tone="warning">
             <Text as="p">
@@ -150,8 +161,8 @@ export default function SubscriptionPage() {
         {cancelMutation.isSuccess && (
           <Banner title="Subscription cancelled" tone="success">
             <Text as="p">
-              Your subscription has been cancelled. You can resubscribe at any
-              time from the Plans page.
+              {cancelMutation.data?.message ??
+                'Your subscription has been cancelled. You can resubscribe at any time from the Plans page.'}
             </Text>
           </Banner>
         )}
