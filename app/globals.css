@@ -1,0 +1,24 @@
+/**
+ * Global CSS — minimal reset for Polaris compatibility.
+ *
+ * Polaris ships its own design system styles.
+ * This file should only contain true global overrides,
+ * not component-level styles (use Polaris components instead).
+ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+}
+
+#__next {
+  height: 100%;
+}
