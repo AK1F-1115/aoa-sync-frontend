@@ -24,7 +24,6 @@ import {
 } from '@shopify/polaris';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getCatalog, getCatalogSummary } from '@/lib/api/products';
-import { ApiError } from '@/lib/api/client';
 import type { CatalogProduct, CatalogSummary } from '@/types/api';
 
 const PAGE_SIZE = 25;
@@ -248,9 +247,7 @@ export default function ProductsPage() {
             action={{ content: 'Retry', onAction: refetch }}
           >
             <Text as="p">
-              {error instanceof ApiError
-                ? error.message
-                : 'An unexpected error occurred. Please try again.'}
+              {(error as Error)?.message || 'An unexpected error occurred. Please try again.'}
             </Text>
           </Banner>
         )}
@@ -309,7 +306,7 @@ export default function ProductsPage() {
 
           <Divider />
 
-          {!isError && !isFetching && products.length === 0 ? (
+          {isError ? null : !isFetching && products.length === 0 ? (
             <Box paddingBlockStart="600" paddingBlockEnd="600">
               <EmptyState
                 heading={hasFilters ? 'No products match your filters' : 'No products synced yet'}
