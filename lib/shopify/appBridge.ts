@@ -18,9 +18,49 @@
 import type { ShopifyGlobal } from '@shopify/app-bridge-types';
 
 /**
- * Gets the Shopify global variable.
- * This is available after the App Bridge CDN script has loaded.
- * Only available in browser context.
+ * Waits for the Shopify global to be available, then returns it.
+ *
+ * App Bridge v4 initializes via a CDN script. On a fresh page load, there is a
+ * race between React mounting + React Query firing and the CDN script setting
+ * window.shopify. This function polls with a short delay rather than throwing
+ * immediately, which prevents spurious crashes on fresh navigation.
+ *
+ * Times out after 5 seconds with a clear error.
+ */
+async function waitForShopify(): Promise<ShopifyGlobal> {
+  if (typeof window === 'undefined') {
+    throw new Error('[appBridge] waitForShopify() called in server context');
+  }
+
+  const shopify = (window as unknown as { shopify?: ShopifyGlobal }).shopify;
+  if (shopify) return shopify;
+
+  // Poll every 100ms, timeout after 5s
+  return new Promise((resolve, reject) => {
+    const start = Date.now();
+    const interval = setInterval(() => {
+      const s = (window as unknown as { shopify?: ShopifyGlobal }).shopify;
+      if (s) {
+        clearInterval(interval);
+        resolve(s);
+        return;
+      }
+      if (Date.now() - start > 5000) {
+        clearInterval(interval);
+        reject(
+          new Error(
+            '[appBridge] window.shopify did not initialize within 5 seconds. ' +
+            'Ensure this app is opened from inside Shopify Admin.'
+          )
+        );
+      }
+    }, 100);
+  });
+}
+
+/**
+ * Gets the Shopify global variable synchronously.
+ * Throws immediately if not available. Use waitForShopify() for async contexts.
  */
 function getShopify(): ShopifyGlobal {
   if (typeof window === 'undefined') {
@@ -57,7 +97,7 @@ export function isEmbedded(): boolean {
  * Never cache this token — call fresh before each API request.
  */
 export async function getSessionToken(): Promise<string> {
-  const shopify = getShopify();
+  const shopify = await waitForShopify();
   return shopify.idToken();
 }
 
@@ -69,15 +109,13 @@ export function showToast(
   message: string,
   options?: { isError?: boolean; duration?: number }
 ): void {
-  try {
-    const shopify = getShopify();
-    shopify.toast.show(message, options);
-  } catch {
-    // Silently ignore in server or non-embedded context
-    if (process.env.NODE_ENV === 'development') {
-      console.warn('[appBridge] showToast failed — not in embedded context');
-    }
-  }
+  void waitForShopify()
+    .then((shopify) => shopify.toast.show(message, options))
+    .catch(() => {
+      if (process.env.NODE_ENV === 'development') {
+        console.warn('[appBridge] showToast failed — not in embedded context');
+      }
+    });
 }
 
 
