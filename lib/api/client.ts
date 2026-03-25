@@ -90,3 +90,49 @@ export async function apiFetch<T>(
 
   return response.json() as Promise<T>;
 }
+
+/**
+ * Unauthenticated fetch wrapper.
+ *
+ * For public endpoints that do NOT require a Shopify session token
+ * (e.g. GET /billing/plans). Behaves identically to apiFetch() except
+ * no Authorization header is attached.
+ *
+ * @param path - API path e.g. "/billing/plans" (without base URL)
+ * @param options - Standard RequestInit options
+ * @returns Parsed JSON response typed as T
+ * @throws ApiError on non-2xx responses
+ */
+export async function apiFetchPublic<T>(
+  path: string,
+  options?: RequestInit
+): Promise<T> {
+  const response = await fetch(`${config.api.baseUrl}${path}`, {
+    ...options,
+    headers: {
+      'Content-Type': 'application/json',
+      ...options?.headers,
+    },
+  });
+
+  if (!response.ok) {
+    let message = `Request failed: ${response.status} ${response.statusText}`;
+    let code: string | undefined;
+
+    try {
+      const body = (await response.json()) as { message?: string; code?: string };
+      if (body.message) message = body.message;
+      if (body.code) code = body.code;
+    } catch {
+      // Body was not JSON — use status text
+    }
+
+    throw new ApiError(response.status, message, code);
+  }
+
+  if (response.status === 204) {
+    return undefined as T;
+  }
+
+  return response.json() as Promise<T>;
+}

@@ -1,31 +1,64 @@
 /**
  * lib/api/billing.ts
  *
- * Billing API calls — subscribe and cancel.
+ * Billing API calls.
  *
- * @assumed — backend endpoint shapes are assumed. See ARCHITECTURE.md §Open Backend Contracts.
- * TODO(backend): Confirm POST /billing/subscribe and POST /billing/cancel response shapes.
+ * Endpoints:
+ *   GET  /billing/plans     — public, no auth
+ *   POST /billing/subscribe — requires session token
+ *   POST /billing/cancel    — requires session token
  */
 
-import { apiFetch } from './client';
+import { apiFetch, apiFetchPublic } from './client';
+import { STATIC_PLANS } from '@/lib/plans';
+import type { StaticPlan } from '@/lib/plans';
 import type {
   BillingSubscribeRequest,
   BillingSubscribeResponse,
   BillingCancelResponse,
-  Plan,
 } from '@/types/api';
 
 /**
- * Fetches available billing plans.
- *
- * @assumed endpoint: GET /billing/plans
- * @assumed response: Plan[]
- *
- * TODO(backend): Confirm this endpoint exists or replace with hardcoded plans
- * if the backend does not serve them dynamically.
+ * Shape returned by GET /billing/plans.
+ * Public endpoint — no auth required.
+ * Uses snake_case consistent with other backend responses.
  */
-export async function getPlans(): Promise<Plan[]> {
-  return apiFetch<Plan[]>('/billing/plans');
+interface ApiPlanItem {
+  slug: string;
+  name: string;
+  /** Monthly price in USD as a string e.g. "29.99" */
+  price_usd: string;
+  sku_limit: number;
+  trial_days: number;
+  /** Optional — backend may or may not include a features array */
+  features?: string[];
+  is_popular?: boolean;
+}
+
+/**
+ * Fetches available billing plans from the backend.
+ *
+ * GET /billing/plans — public, no auth required.
+ *
+ * Maps backend snake_case response to the StaticPlan shape used by the UI.
+ * If the API returns a features array it is used directly; otherwise features
+ * are derived from sku_limit.
+ */
+export async function getPlans(): Promise<StaticPlan[]> {
+  const items = await apiFetchPublic<ApiPlanItem[]>('/billing/plans');
+  return items.map((item): StaticPlan => ({
+    slug: item.slug,
+    name: item.name,
+    price: parseFloat(item.price_usd),
+    trialDays: item.trial_days,
+    isPopular: item.is_popular ?? false,
+    features: item.features ?? [
+      `Up to ${item.sku_limit.toLocaleString()} SKUs synced`,
+      'Automatic product sync',
+      'Real-time inventory updates',
+      'Email support',
+    ],
+  }));
 }
 
 /**

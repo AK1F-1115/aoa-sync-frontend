@@ -5,11 +5,12 @@
  *
  * Plans page — allows merchants to select and subscribe to a billing plan.
  *
- * Plans are defined statically in lib/plans.ts rather than fetched from the
- * API (standard practice for Shopify apps with a small fixed plan set).
+ * Plans are fetched live from GET /billing/plans (public endpoint).
+ * Falls back to STATIC_PLANS from lib/plans.ts if the request fails,
+ * so the page is always functional.
  *
  * Flow:
- * 1. Displays STATIC_PLANS
+ * 1. Fetches plans from GET /billing/plans
  * 2. Merchant selects a plan
  * 3. Merchant clicks "Subscribe" → POST /billing/subscribe { plan_slug }
  * 4. Backend returns confirmationUrl
@@ -29,11 +30,13 @@ import {
   BlockStack,
   InlineStack,
   List,
+  SkeletonPage,
+  SkeletonBodyText,
   Divider,
   Modal,
 } from '@shopify/polaris';
-import { useMutation } from '@tanstack/react-query';
-import { subscribeToPlan } from '@/lib/api/billing';
+import { useQuery, useMutation } from '@tanstack/react-query';
+import { getPlans, subscribeToPlan } from '@/lib/api/billing';
 import { useMerchantContext } from '@/hooks/useMerchantContext';
 import { STATIC_PLANS } from '@/lib/plans';
 import { ApiError } from '@/lib/api/client';
@@ -106,9 +109,19 @@ export default function PlansPage() {
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
 
-  // Get current plan slug from already-loaded merchant context (no extra fetch)
+  // Current plan slug from the already-loaded merchant context (no extra fetch)
   const { subscription } = useMerchantContext();
   const currentPlanSlug = subscription?.planId ?? null;
+
+  // Fetch live plans from backend; fall back to STATIC_PLANS on error
+  const { data: apiPlans, isLoading: plansLoading } = useQuery({
+    queryKey: ['plans'],
+    queryFn: getPlans,
+    staleTime: 10 * 60_000,
+    // Don't retry on error — fall back to static plans immediately
+    retry: false,
+  });
+  const plans: StaticPlan[] = apiPlans ?? STATIC_PLANS;
 
   const subscribeMutation = useMutation({
     mutationFn: (slug: string) => subscribeToPlan(slug),
@@ -139,7 +152,23 @@ export default function PlansPage() {
     setConfirmModalOpen(false);
   };
 
-  const selectedPlan = STATIC_PLANS.find((p) => p.slug === selectedSlug);
+  const selectedPlan = plans.find((p) => p.slug === selectedSlug);
+
+  if (plansLoading) {
+    return (
+      <SkeletonPage title="Plans">
+        <Layout>
+          {[1, 2, 3].map((i) => (
+            <Layout.Section variant="oneThird" key={i}>
+              <Card>
+                <SkeletonBodyText lines={7} />
+              </Card>
+            </Layout.Section>
+          ))}
+        </Layout>
+      </SkeletonPage>
+    );
+  }
 
   return (
     <Page
@@ -158,7 +187,7 @@ export default function PlansPage() {
         )}
 
         <Layout>
-          {STATIC_PLANS.map((plan: StaticPlan) => (
+          {plans.map((plan: StaticPlan) => (
             <Layout.Section variant="oneThird" key={plan.slug}>
               <PlanCard
                 plan={plan}
