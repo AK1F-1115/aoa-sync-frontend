@@ -220,22 +220,29 @@ export interface ShippingBootstrapResponse {
 
 /** A single product row from GET /store/catalog */
 export interface CatalogProduct {
-  /** Shopify product ID (string representation of the numeric ID) */
-  shopify_product_id: string;
-  /** Product name from the AOA source table */
-  name: string;
+  /** Essendant item number — always present */
+  supplier_sku: string;
   /** 'essendant' (warehouse/retail) or 'essendant_vds' (dropship/VDS) */
   supplier: string | null;
-  category: string | null;
+  /** Product name via COALESCE join on products / vds_products */
+  product_name: string | null;
+  /** Top-level Essendant category e.g. "OFFICE SUPPLIES" */
+  category_1: string | null;
   brand: string | null;
-  /** Last price synced to Shopify as a decimal string e.g. "9.99" */
+  /** Full Shopify GID e.g. "gid://shopify/Product/123"; null if not yet pushed */
+  shopify_product_id: string | null;
+  /** Wholesale/cost price as decimal string e.g. "4.99" */
   last_synced_price: string | null;
-  /** Last quantity synced to Shopify */
+  /** Last quantity pushed to Shopify; null = not yet synced */
   last_synced_quantity: number | null;
-  /** Last known Shopify product status e.g. "active", "draft" */
+  /** "ACTIVE" | "DRAFT" | null */
   last_shopify_status: string | null;
-  /** Shipping profile key assigned to this product's variants */
+  /** "warehouse" | "dropship" | null */
   shipping_profile_key: string | null;
+  /** 1 = standard, 2 = VDS quantity-break */
+  variant_tier: number | null;
+  /** "R" = warehouse, "S"/"N" = dropship; null for VDS */
+  stocking_indicator: string | null;
 }
 
 /** Paginated response from GET /store/catalog */
@@ -274,9 +281,9 @@ export interface CatalogSummary {
   /** Variants not yet assigned to any shipping profile */
   unassigned_count: number;
   /** Top 15 categories by variant count */
-  top_categories: { name: string; count: number }[];
+  categories: { name: string; count: number }[];
   /** Top 15 brands by variant count */
-  top_brands: { name: string; count: number }[];
+  brands: { name: string; count: number }[];
   /** ISO timestamp of the most recent sync */
   last_sync_at: string | null;
 }

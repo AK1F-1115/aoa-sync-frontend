@@ -23,6 +23,7 @@ import {
 } from '@shopify/polaris';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getCatalog, getCatalogSummary } from '@/lib/api/products';
+import { getSettings } from '@/lib/api/settings';
 import type { CatalogProduct, CatalogSummary } from '@/types/api';
 
 const PAGE_SIZE = 25;
@@ -31,13 +32,6 @@ function formatPrice(price: string | null): string {
   if (!price) return '—';
   const n = parseFloat(price);
   return isNaN(n) ? '—' : `$${n.toFixed(2)}`;
-}
-
-function formatDate(iso: string | null): string {
-  if (!iso) return '—';
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric', month: 'short', day: 'numeric',
-  });
 }
 
 function formatDateTime(iso: string | null): string {
@@ -124,6 +118,12 @@ export default function ProductsPage() {
     staleTime: 2 * 60_000,
   });
 
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings,
+    staleTime: 5 * 60_000,
+  });
+
   const {
     data,
     isLoading,
@@ -152,17 +152,18 @@ export default function ProductsPage() {
 
   const hasFilters = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
 
-  const categoryOptions = toSelectOptions(summary?.top_categories ?? [], 'All categories');
-  const brandOptions    = toSelectOptions(summary?.top_brands     ?? [], 'All brands');
+  const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
+  const brandOptions    = toSelectOptions(summary?.brands     ?? [], 'All brands');
 
   const headings = [
-    { title: 'Product'        },
-    { title: 'Supplier'       },
-    { title: 'Category'       },
-    { title: 'Brand'          },
-    { title: 'Price'          },
-    { title: 'Qty'            },
-    { title: 'Shopify status' },
+    { title: 'Product'    },
+    { title: 'Supplier'   },
+    { title: 'Category'   },
+    { title: 'Brand'      },
+    { title: 'Cost'       },
+    { title: 'List price' },
+    { title: 'Qty'        },
+    { title: 'Status'     },
   ] as [{ title: string }, ...{ title: string }[]];
 
   const supplierLabel = (s: string | null) =>
@@ -170,43 +171,59 @@ export default function ProductsPage() {
   const supplierTone = (s: string | null) =>
     s === 'essendant' ? ('info' as const) : s === 'essendant_vds' ? ('warning' as const) : undefined;
 
-  const rowMarkup = products.map((product, index) => (
-    <IndexTable.Row id={product.shopify_product_id} key={product.shopify_product_id} position={index}>
-      <IndexTable.Cell>
-        <Text fontWeight="semibold" as="span">{product.name}</Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        {supplierLabel(product.supplier) ? (
-          <Badge tone={supplierTone(product.supplier)}>
-            {supplierLabel(product.supplier)!}
-          </Badge>
-        ) : (
-          <Text as="span" tone="subdued">—</Text>
-        )}
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span">{product.category ?? '—'}</Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span">{product.brand ?? '—'}</Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span">{formatPrice(product.last_synced_price)}</Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span">{product.last_synced_quantity ?? '—'}</Text>
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        {product.last_shopify_status ? (
-          <Badge tone={product.last_shopify_status === 'active' ? 'success' : undefined}>
-            {product.last_shopify_status.charAt(0).toUpperCase() + product.last_shopify_status.slice(1)}
-          </Badge>
-        ) : (
-          <Text as="span" tone="subdued">—</Text>
-        )}
-      </IndexTable.Cell>
-    </IndexTable.Row>
-  ));
+  const rowMarkup = products.map((product, index) => {
+    const markup = product.supplier === 'essendant_vds'
+      ? (settings?.markup_pct_vds     ?? 0)
+      : (settings?.markup_pct_retail  ?? 0);
+    const listPrice = product.last_synced_price
+      ? `$${(parseFloat(product.last_synced_price) * (1 + markup)).toFixed(2)}`
+      : '—';
+    const status = product.last_shopify_status?.toUpperCase() ?? null;
+
+    return (
+      <IndexTable.Row id={product.supplier_sku} key={product.supplier_sku} position={index}>
+        <IndexTable.Cell>
+          <BlockStack gap="050">
+            <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
+            <Text tone="subdued" variant="bodySm" as="span">{product.supplier_sku}</Text>
+          </BlockStack>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {supplierLabel(product.supplier) ? (
+            <Badge tone={supplierTone(product.supplier)}>
+              {supplierLabel(product.supplier)!}
+            </Badge>
+          ) : (
+            <Text as="span" tone="subdued">—</Text>
+          )}
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span">{product.category_1 ?? '—'}</Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span">{product.brand ?? '—'}</Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span">{formatPrice(product.last_synced_price)}</Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span">{listPrice}</Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span">{product.last_synced_quantity ?? '—'}</Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {status ? (
+            <Badge tone={status === 'ACTIVE' ? 'success' : undefined}>
+              {status.charAt(0) + status.slice(1).toLowerCase()}
+            </Badge>
+          ) : (
+            <Text as="span" tone="subdued">—</Text>
+          )}
+        </IndexTable.Cell>
+      </IndexTable.Row>
+    );
+  });
 
   if (isLoading && !data) {
     return (
