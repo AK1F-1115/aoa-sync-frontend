@@ -12,7 +12,9 @@
  */
 
 export interface StaticPlan {
-  /** Plan slug — must match the slug expected by POST /billing/subscribe */
+  /** Numeric plan ID — sent as plan_id to POST /billing/subscribe */
+  id: number;
+  /** Plan slug — used for UI selection tracking */
   slug: string;
   name: string;
   /** Monthly price in USD */
@@ -27,6 +29,7 @@ export interface StaticPlan {
 
 export const STATIC_PLANS: StaticPlan[] = [
   {
+    id: 2,
     slug: 'starter',
     name: 'Starter',
     price: 29.99,

@@ -65,10 +65,10 @@ export interface SubscriptionInfo {
 /** Request body for POST /billing/subscribe */
 export interface BillingSubscribeRequest {
   /**
-   * The plan ID to subscribe to (e.g. "starter").
+   * The numeric plan ID to subscribe to (e.g. 2 for starter).
    * The backend reads shop_domain from the session token automatically.
    */
-  plan_id: string;
+  plan_id: number;
 }
 
 /** Response from POST /billing/subscribe */

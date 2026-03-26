@@ -162,7 +162,7 @@ function BillingTab({ subscription }: { subscription: SubscriptionInfo | undefin
   const plans: StaticPlan[] = apiPlans ?? STATIC_PLANS;
 
   const subscribeMutation = useMutation({
-    mutationFn: (slug: string) => subscribeToPlan(slug),
+    mutationFn: (planId: number) => subscribeToPlan(planId),
     onSuccess: (data) => {
       const url = data.confirmation_url;
       if (window.top) window.top.location.assign(url);
@@ -308,7 +308,10 @@ function BillingTab({ subscription }: { subscription: SubscriptionInfo | undefin
             content: 'Confirm',
             loading: subscribeMutation.isPending,
             onAction: () => {
-              if (selectedSlug) subscribeMutation.mutate(selectedSlug);
+              if (selectedSlug) {
+                const plan = plans.find((p) => p.slug === selectedSlug);
+                if (plan) subscribeMutation.mutate(plan.id);
+              }
               setConfirmOpen(false);
             },
           }}

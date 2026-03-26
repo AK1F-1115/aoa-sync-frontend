@@ -24,6 +24,7 @@ import type {
  * Uses snake_case consistent with other backend responses.
  */
 interface ApiPlanItem {
+  id: number;
   slug: string;
   name: string;
   /** Monthly price in USD as a string e.g. "29.99" */
@@ -47,6 +48,7 @@ interface ApiPlanItem {
 export async function getPlans(): Promise<StaticPlan[]> {
   const items = await apiFetchPublic<ApiPlanItem[]>('/billing/plans');
   return items.map((item): StaticPlan => ({
+    id: item.id,
     slug: item.slug,
     name: item.name,
     price: parseFloat(item.price_usd),
@@ -79,11 +81,11 @@ export async function getPlans(): Promise<StaticPlan[]> {
  * @confirmed response: BillingSubscribeResponse { confirmationUrl: string }
  */
 export async function subscribeToPlan(
-  planSlug: BillingSubscribeRequest['plan_id']
+  planId: BillingSubscribeRequest['plan_id']
 ): Promise<BillingSubscribeResponse> {
   return apiFetch<BillingSubscribeResponse>('/billing/subscribe', {
     method: 'POST',
-    body: JSON.stringify({ plan_id: planSlug }),
+    body: JSON.stringify({ plan_id: planId }),
   });
 }
 
