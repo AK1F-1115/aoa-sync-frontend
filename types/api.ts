@@ -220,10 +220,10 @@ export interface ShippingBootstrapResponse {
 
 /** A single product row from GET /store/catalog */
 export interface CatalogProduct {
-  /** Essendant item number — always present */
-  supplier_sku: string;
-  /** 'essendant' (warehouse/retail) or 'essendant_vds' (dropship/VDS) */
-  supplier: string | null;
+  /** AOA internal SKU (formerly supplier_sku / product_id) */
+  aoa_sku: string;
+  /** 'retail' (Essendant warehouse) or 'vds' (Essendant VDS dropship) */
+  product_type: 'retail' | 'vds' | null;
   /** Product name via COALESCE join on products / vds_products */
   product_name: string | null;
   /** Top-level Essendant category e.g. "OFFICE SUPPLIES" */
@@ -231,8 +231,10 @@ export interface CatalogProduct {
   brand: string | null;
   /** Full Shopify GID e.g. "gid://shopify/Product/123"; null if not yet pushed */
   shopify_product_id: string | null;
-  /** Wholesale/cost price as decimal string e.g. "4.99" */
-  last_synced_price: string | null;
+  /** What AOA charges the merchant: cost_price × (1 + plan.aoa_markup_pct); null if no plan or cost missing */
+  aoa_cost: string | null;
+  /** What customers pay on Shopify: aoa_cost × (1 + store.shopify_markup_pct); null if not yet price-synced */
+  list_price: string | null;
   /** Last quantity pushed to Shopify; null = not yet synced */
   last_synced_quantity: number | null;
   /** "ACTIVE" | "DRAFT" | null */

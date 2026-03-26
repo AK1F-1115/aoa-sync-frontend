@@ -23,7 +23,6 @@ import {
 } from '@shopify/polaris';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
 import { getCatalog, getCatalogSummary } from '@/lib/api/products';
-import { getSettings } from '@/lib/api/settings';
 import type { CatalogProduct, CatalogSummary } from '@/types/api';
 
 const PAGE_SIZE = 25;
@@ -118,12 +117,6 @@ export default function ProductsPage() {
     staleTime: 2 * 60_000,
   });
 
-  const { data: settings } = useQuery({
-    queryKey: ['settings'],
-    queryFn: getSettings,
-    staleTime: 5 * 60_000,
-  });
-
   const {
     data,
     isLoading,
@@ -166,32 +159,25 @@ export default function ProductsPage() {
     { title: 'Status'     },
   ] as [{ title: string }, ...{ title: string }[]];
 
-  const supplierLabel = (s: string | null) =>
-    s === 'essendant' ? 'Warehouse' : s === 'essendant_vds' ? 'Dropship' : null;
-  const supplierTone = (s: string | null) =>
-    s === 'essendant' ? ('info' as const) : s === 'essendant_vds' ? ('warning' as const) : undefined;
+  const supplierLabel = (t: CatalogProduct['product_type']) =>
+    t === 'retail' ? 'Warehouse' : t === 'vds' ? 'Dropship' : null;
+  const supplierTone = (t: CatalogProduct['product_type']) =>
+    t === 'retail' ? ('info' as const) : t === 'vds' ? ('warning' as const) : undefined;
 
   const rowMarkup = products.map((product, index) => {
-    const markup = product.supplier === 'essendant_vds'
-      ? (settings?.markup_pct_vds     ?? 0)
-      : (settings?.markup_pct_retail  ?? 0);
-    const listPrice = product.last_synced_price
-      ? `$${(parseFloat(product.last_synced_price) * (1 + markup)).toFixed(2)}`
-      : '—';
     const status = product.last_shopify_status?.toUpperCase() ?? null;
-
     return (
-      <IndexTable.Row id={product.supplier_sku} key={product.supplier_sku} position={index}>
+      <IndexTable.Row id={product.aoa_sku} key={product.aoa_sku} position={index}>
         <IndexTable.Cell>
           <BlockStack gap="050">
             <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
-            <Text tone="subdued" variant="bodySm" as="span">{product.supplier_sku}</Text>
+            <Text tone="subdued" variant="bodySm" as="span">{product.aoa_sku}</Text>
           </BlockStack>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          {supplierLabel(product.supplier) ? (
-            <Badge tone={supplierTone(product.supplier)}>
-              {supplierLabel(product.supplier)!}
+          {supplierLabel(product.product_type) ? (
+            <Badge tone={supplierTone(product.product_type)}>
+              {supplierLabel(product.product_type)!}
             </Badge>
           ) : (
             <Text as="span" tone="subdued">—</Text>
@@ -204,10 +190,10 @@ export default function ProductsPage() {
           <Text as="span">{product.brand ?? '—'}</Text>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <Text as="span">{formatPrice(product.last_synced_price)}</Text>
+          <Text as="span">{formatPrice(product.aoa_cost)}</Text>
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <Text as="span">{listPrice}</Text>
+          <Text as="span">{formatPrice(product.list_price)}</Text>
         </IndexTable.Cell>
         <IndexTable.Cell>
           <Text as="span">{product.last_synced_quantity ?? '—'}</Text>
