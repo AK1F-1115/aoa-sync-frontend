@@ -218,32 +218,24 @@ export interface ShippingBootstrapResponse {
 // Catalog
 // ---------------------------------------------------------------------------
 
-/** A single product from GET /store/catalog */
+/** A single product row from GET /store/catalog */
 export interface CatalogProduct {
-  /** Internal AOA product / variant ID */
-  id: string;
-  /** Shopify product GID e.g. "gid://shopify/Product/123" */
-  shopify_id: string;
-  title: string;
-  /** Supplier / vendor name */
+  /** Shopify product ID (string representation of the numeric ID) */
+  shopify_product_id: string;
+  /** Product name from the AOA source table */
+  name: string;
+  /** 'essendant' (warehouse/retail) or 'essendant_vds' (dropship/VDS) */
   supplier: string | null;
   category: string | null;
   brand: string | null;
-  /** Primary image URL */
-  image_url: string | null;
-  variants_count: number;
-  /** Lowest variant price as a decimal string e.g. "9.99" */
-  price_min: string;
-  /** Highest variant price as a decimal string e.g. "49.99" */
-  price_max: string;
-  /** ISO timestamp of last sync for this product */
-  synced_at: string | null;
-  /** SKU of the default / first variant */
-  sku: string | null;
-  /** Fulfillment type */
-  fulfillment_type: 'warehouse' | 'dropship' | null;
-  /** Whether this product is in the retail or VDS price tier */
-  price_tier: 'retail' | 'vds' | 'wholesale' | null;
+  /** Last price synced to Shopify as a decimal string e.g. "9.99" */
+  last_synced_price: string | null;
+  /** Last quantity synced to Shopify */
+  last_synced_quantity: number | null;
+  /** Last known Shopify product status e.g. "active", "draft" */
+  last_shopify_status: string | null;
+  /** Shipping profile key assigned to this product's variants */
+  shipping_profile_key: string | null;
 }
 
 /** Paginated response from GET /store/catalog */
@@ -267,19 +259,21 @@ export interface CatalogParams {
 
 /** Top-level aggregate from GET /store/catalog/summary */
 export interface CatalogSummary {
-  /** Total synced products */
-  total_products: number;
-  /** Products on the retail price tier */
+  /** Total active synced variants (active=true rows in shopify_variant_map) */
+  total_active: number;
+  /** Essendant (warehouse/retail) variant count */
   retail_count: number;
-  /** Products on the VDS price tier */
+  /** Essendant VDS (dropship) variant count */
   vds_count: number;
-  /** Variants assigned to warehouse fulfilment */
+  /** Variants assigned to warehouse shipping profile */
   warehouse_count: number;
-  /** Variants assigned to dropship fulfilment */
+  /** Variants assigned to dropship shipping profile */
   dropship_count: number;
-  /** Top 15 categories by product count */
+  /** Variants not yet assigned to any shipping profile */
+  unassigned_count: number;
+  /** Top 15 categories by variant count */
   top_categories: { name: string; count: number }[];
-  /** Top 15 brands by product count */
+  /** Top 15 brands by variant count */
   top_brands: { name: string; count: number }[];
   /** ISO timestamp of the most recent sync */
   last_sync_at: string | null;

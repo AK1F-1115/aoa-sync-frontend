@@ -5,7 +5,6 @@ import {
   Page,
   Card,
   IndexTable,
-  Thumbnail,
   Text,
   Badge,
   Banner,
@@ -28,12 +27,10 @@ import type { CatalogProduct, CatalogSummary } from '@/types/api';
 
 const PAGE_SIZE = 25;
 
-function formatPrice(min: string, max: string): string {
-  const lo = parseFloat(min);
-  const hi = parseFloat(max);
-  if (isNaN(lo)) return '—';
-  if (lo === hi) return `$${lo.toFixed(2)}`;
-  return `$${lo.toFixed(2)} – $${hi.toFixed(2)}`;
+function formatPrice(price: string | null): string {
+  if (!price) return '—';
+  const n = parseFloat(price);
+  return isNaN(n) ? '—' : `$${n.toFixed(2)}`;
 }
 
 function formatDate(iso: string | null): string {
@@ -62,10 +59,10 @@ function SummaryBar({ summary, isLoading }: { summary: CatalogSummary | undefine
   if (!summary) return null;
 
   const stats = [
-    { label: 'Total products', value: (summary.total_products  ?? 0).toLocaleString() },
-    { label: 'Warehouse',      value: (summary.warehouse_count ?? 0).toLocaleString() },
-    { label: 'Dropship',       value: (summary.dropship_count  ?? 0).toLocaleString() },
-    { label: 'Last sync',      value: formatDateTime(summary.last_sync_at)            },
+    { label: 'Total active',  value: (summary.total_active    ?? 0).toLocaleString() },
+    { label: 'Warehouse',     value: (summary.warehouse_count ?? 0).toLocaleString() },
+    { label: 'Dropship',      value: (summary.dropship_count  ?? 0).toLocaleString() },
+    { label: 'Last sync',     value: formatDateTime(summary.last_sync_at)            },
   ];
 
   return (
@@ -159,37 +156,33 @@ export default function ProductsPage() {
   const brandOptions    = toSelectOptions(summary?.top_brands     ?? [], 'All brands');
 
   const headings = [
-    { title: 'Product'     },
-    { title: 'SKU'         },
-    { title: 'Category'    },
-    { title: 'Brand'       },
-    { title: 'Price'       },
-    { title: 'Fulfilment'  },
-    { title: 'Last synced' },
+    { title: 'Product'        },
+    { title: 'Supplier'       },
+    { title: 'Category'       },
+    { title: 'Brand'          },
+    { title: 'Price'          },
+    { title: 'Qty'            },
+    { title: 'Shopify status' },
   ] as [{ title: string }, ...{ title: string }[]];
 
-  const fulfilmentTone = (type: CatalogProduct['fulfillment_type']) =>
-    type === 'warehouse' ? ('info' as const) : type === 'dropship' ? ('warning' as const) : undefined;
+  const supplierLabel = (s: string | null) =>
+    s === 'essendant' ? 'Warehouse' : s === 'essendant_vds' ? 'Dropship' : null;
+  const supplierTone = (s: string | null) =>
+    s === 'essendant' ? ('info' as const) : s === 'essendant_vds' ? ('warning' as const) : undefined;
 
   const rowMarkup = products.map((product, index) => (
-    <IndexTable.Row id={product.id} key={product.id} position={index}>
+    <IndexTable.Row id={product.shopify_product_id} key={product.shopify_product_id} position={index}>
       <IndexTable.Cell>
-        <InlineStack gap="300" blockAlign="center">
-          <Thumbnail
-            source={product.image_url ?? ''}
-            alt={product.title}
-            size="small"
-          />
-          <BlockStack gap="050">
-            <Text fontWeight="semibold" as="span">{product.title}</Text>
-            {product.supplier && (
-              <Text tone="subdued" variant="bodySm" as="span">{product.supplier}</Text>
-            )}
-          </BlockStack>
-        </InlineStack>
+        <Text fontWeight="semibold" as="span">{product.name}</Text>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <Text as="span" tone="subdued">{product.sku ?? '—'}</Text>
+        {supplierLabel(product.supplier) ? (
+          <Badge tone={supplierTone(product.supplier)}>
+            {supplierLabel(product.supplier)!}
+          </Badge>
+        ) : (
+          <Text as="span" tone="subdued">—</Text>
+        )}
       </IndexTable.Cell>
       <IndexTable.Cell>
         <Text as="span">{product.category ?? '—'}</Text>
@@ -198,19 +191,19 @@ export default function ProductsPage() {
         <Text as="span">{product.brand ?? '—'}</Text>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        <Text as="span">{formatPrice(product.price_min, product.price_max)}</Text>
+        <Text as="span">{formatPrice(product.last_synced_price)}</Text>
       </IndexTable.Cell>
       <IndexTable.Cell>
-        {product.fulfillment_type ? (
-          <Badge tone={fulfilmentTone(product.fulfillment_type)}>
-            {product.fulfillment_type.charAt(0).toUpperCase() + product.fulfillment_type.slice(1)}
+        <Text as="span">{product.last_synced_quantity ?? '—'}</Text>
+      </IndexTable.Cell>
+      <IndexTable.Cell>
+        {product.last_shopify_status ? (
+          <Badge tone={product.last_shopify_status === 'active' ? 'success' : undefined}>
+            {product.last_shopify_status.charAt(0).toUpperCase() + product.last_shopify_status.slice(1)}
           </Badge>
         ) : (
           <Text as="span" tone="subdued">—</Text>
         )}
-      </IndexTable.Cell>
-      <IndexTable.Cell>
-        <Text as="span" tone="subdued">{formatDate(product.synced_at)}</Text>
       </IndexTable.Cell>
     </IndexTable.Row>
   ));
