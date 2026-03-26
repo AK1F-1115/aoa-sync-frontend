@@ -146,7 +146,7 @@ export default function ProductsPage() {
     staleTime: 60_000,
   });
 
-  const products: CatalogProduct[] = data?.products ?? [];
+  const products: CatalogProduct[] = data?.items ?? data?.products ?? [];
   const total = data?.total ?? 0;
   const pages = data?.pages ?? 1;
 
@@ -298,7 +298,7 @@ export default function ProductsPage() {
 
           <Divider />
 
-          {isError ? null : !isFetching && products.length === 0 ? (
+          {isError ? null : !isLoading && !isFetching && products.length === 0 ? (
             <Box paddingBlockStart="600" paddingBlockEnd="600">
               <EmptyState
                 heading={hasFilters ? 'No products match your filters' : 'No products synced yet'}

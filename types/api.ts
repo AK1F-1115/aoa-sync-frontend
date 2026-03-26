@@ -240,7 +240,9 @@ export interface CatalogProduct {
 
 /** Paginated response from GET /store/catalog */
 export interface CatalogResponse {
-  products: CatalogProduct[];
+  /** FastAPI pagination key — may be 'items' or 'products' depending on backend */
+  items?: CatalogProduct[];
+  products?: CatalogProduct[];
   total: number;
   page: number;
   page_size: number;
