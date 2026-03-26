@@ -63,8 +63,6 @@ function SummaryBar({ summary, isLoading }: { summary: CatalogSummary | undefine
 
   const stats = [
     { label: 'Total products', value: (summary.total_products  ?? 0).toLocaleString() },
-    { label: 'Retail',         value: (summary.retail_count    ?? 0).toLocaleString() },
-    { label: 'VDS',            value: (summary.vds_count       ?? 0).toLocaleString() },
     { label: 'Warehouse',      value: (summary.warehouse_count ?? 0).toLocaleString() },
     { label: 'Dropship',       value: (summary.dropship_count  ?? 0).toLocaleString() },
     { label: 'Last sync',      value: formatDateTime(summary.last_sync_at)            },
