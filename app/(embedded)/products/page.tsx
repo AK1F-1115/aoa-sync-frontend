@@ -228,6 +228,7 @@ export default function ProductsPage() {
 
   return (
     <Page
+      fullWidth
       title="Products"
       subtitle={
         total > 0

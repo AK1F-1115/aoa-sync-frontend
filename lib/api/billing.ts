@@ -79,11 +79,11 @@ export async function getPlans(): Promise<StaticPlan[]> {
  * @confirmed response: BillingSubscribeResponse { confirmationUrl: string }
  */
 export async function subscribeToPlan(
-  planSlug: BillingSubscribeRequest['plan_slug']
+  planSlug: BillingSubscribeRequest['plan_id']
 ): Promise<BillingSubscribeResponse> {
   return apiFetch<BillingSubscribeResponse>('/billing/subscribe', {
     method: 'POST',
-    body: JSON.stringify({ plan_slug: planSlug }),
+    body: JSON.stringify({ plan_id: planSlug }),
   });
 }
 
