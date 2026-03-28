@@ -171,17 +171,19 @@ function BillingTab({
     mutationFn: (planId: number) => subscribeToPlan(planId),
     onSuccess: (data) => {
       if (data.confirmation_url) {
-        // Paid plan — redirect to Shopify billing approval page
-        if (window.top) window.top.location.assign(data.confirmation_url);
-        else window.location.assign(data.confirmation_url);
+        // Paid plan — redirect to Shopify billing approval page.
+        // Must use window.open(_top) or window.location — NOT window.top.location.
+        // In the Shopify Admin iframe, window.top is cross-origin, so accessing
+        // window.top.location throws a SecurityError which React Query treats as
+        // a mutation failure even though the backend call succeeded.
+        window.open(data.confirmation_url, '_top');
       } else if (data.activated) {
         // Free plan — already active, no Shopify redirect needed
         void queryClient.invalidateQueries({ queryKey: ['merchantContext'] });
         const target = shopDomain
           ? `/dashboard?shop=${shopDomain}`
           : '/dashboard';
-        if (window.top) window.top.location.assign(target);
-        else window.location.assign(target);
+        window.open(target, '_top');
       }
     },
   });
