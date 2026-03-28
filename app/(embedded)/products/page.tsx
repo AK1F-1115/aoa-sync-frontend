@@ -5,6 +5,7 @@ import {
   Page,
   Card,
   IndexTable,
+  useIndexResourceState,
   Text,
   Badge,
   Banner,
@@ -142,6 +143,22 @@ export default function ProductsPage() {
   const total = data?.total ?? 0;
   const pages = data?.pages ?? 1;
 
+  type IndexableProduct = CatalogProduct & { [key: string]: unknown };
+  const {
+    selectedResources,
+    allResourcesSelected,
+    handleSelectionChange,
+  } = useIndexResourceState(products as IndexableProduct[], {
+    resourceIDResolver: (p) => p.aoa_sku,
+  });
+
+  // Clear row selection on any filter or page change.
+  // handleSelectionChange is stable from useIndexResourceState — omitted from deps intentionally.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    (handleSelectionChange as (type: string, selecting: boolean) => void)('all', false);
+  }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter]);
+
   const hasFilters = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
 
   const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
@@ -172,7 +189,12 @@ export default function ProductsPage() {
   const rowMarkup = products.map((product, index) => {
     const status = product.last_shopify_status?.toUpperCase() ?? null;
     return (
-      <IndexTable.Row id={product.aoa_sku} key={product.aoa_sku} position={index}>
+      <IndexTable.Row
+        id={product.aoa_sku}
+        key={product.aoa_sku}
+        position={index}
+        selected={selectedResources.includes(product.aoa_sku)}
+      >
         <IndexTable.Cell>
           <BlockStack gap="050">
             <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
@@ -328,7 +350,8 @@ export default function ProductsPage() {
               resourceName={{ singular: 'product', plural: 'products' }}
               itemCount={products.length}
               headings={headings}
-              selectable={false}
+              selectedItemsCount={allResourcesSelected ? 'All' : selectedResources.length}
+              onSelectionChange={handleSelectionChange}
               loading={isFetching}
             >
               {rowMarkup}

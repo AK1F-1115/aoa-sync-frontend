@@ -196,9 +196,10 @@ function BillingTab({
     },
   });
 
-  const canCancel =
-    subscription?.status === 'active' || subscription?.status === 'trial';
+  // Backend always writes status='active' after confirm — 'trial' is never returned
+  const canCancel    = subscription?.status === 'active';
   const selectedPlan = plans.find((p) => p.slug === selectedSlug);
+  const currentPlan  = plans.find((p) => p.slug === (subscription?.planId ?? null));
 
   const statusTone =
     subscription?.status === 'active'  ? ('success'  as const) :
@@ -221,20 +222,17 @@ function BillingTab({
             <Text as="span" tone="subdued">Status</Text>
             <Badge tone={statusTone}>{subscription?.status ?? 'inactive'}</Badge>
           </InlineStack>
-          {subscription?.status === 'trial' && subscription.trialDaysRemaining != null && (
+          {currentPlan?.trialDays != null && currentPlan.trialDays > 0 && (
             <InlineStack align="space-between">
-              <Text as="span" tone="subdued">Trial days remaining</Text>
+              <Text as="span" tone="subdued">Free trial</Text>
               <Text as="span" fontWeight="medium">
-                {subscription.trialDaysRemaining}{' '}
-                day{subscription.trialDaysRemaining !== 1 ? 's' : ''}
+                {currentPlan.trialDays} day{currentPlan.trialDays !== 1 ? 's' : ''} included
               </Text>
             </InlineStack>
           )}
           {subscription?.billingOn && (
             <InlineStack align="space-between">
-              <Text as="span" tone="subdued">
-                {subscription.status === 'trial' ? 'Trial ends' : 'Next billing'}
-              </Text>
+              <Text as="span" tone="subdued">Next billing</Text>
               <Text as="span">{formatDate(subscription.billingOn)}</Text>
             </InlineStack>
           )}
