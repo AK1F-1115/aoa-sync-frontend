@@ -18,7 +18,6 @@ import {
   Box,
   Divider,
   Select,
-  Layout,
   Spinner,
 } from '@shopify/polaris';
 import { useQuery, keepPreviousData } from '@tanstack/react-query';
@@ -148,9 +147,15 @@ export default function ProductsPage() {
   const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
   const brandOptions    = toSelectOptions(summary?.brands     ?? [], 'All brands');
 
+  const typeOptions: { label: string; value: string }[] = [
+    { label: 'All types', value: ''       },
+    { label: 'Warehouse', value: 'retail' },
+    { label: 'Dropship',  value: 'vds'    },
+  ];
+
   const headings = [
     { title: 'Product'    },
-    { title: 'Supplier'   },
+    { title: 'Type'       },
     { title: 'Category'   },
     { title: 'Brand'      },
     { title: 'Cost'       },
@@ -171,7 +176,7 @@ export default function ProductsPage() {
         <IndexTable.Cell>
           <BlockStack gap="050">
             <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
-            <Text tone="subdued" variant="bodySm" as="span">{product.aoa_sku}</Text>
+            <Text tone="subdued" variant="bodySm" as="span">SKU: {product.aoa_sku}</Text>
           </BlockStack>
         </IndexTable.Cell>
         <IndexTable.Cell>
@@ -204,7 +209,7 @@ export default function ProductsPage() {
               {status.charAt(0) + status.slice(1).toLowerCase()}
             </Badge>
           ) : (
-            <Text as="span" tone="subdued">—</Text>
+            <Badge tone="new">Not pushed</Badge>
           )}
         </IndexTable.Cell>
       </IndexTable.Row>
@@ -260,42 +265,46 @@ export default function ProductsPage() {
                 onClearButtonClick={() => setSearchValue('')}
                 autoComplete="off"
               />
-              <Layout>
-                <Layout.Section variant="oneThird">
+              <InlineStack gap="300" blockAlign="end" wrap>
+                <Box minWidth="150px">
+                  <Select
+                    label="Type"
+                    options={typeOptions}
+                    value={supplierFilter}
+                    onChange={handleSupplier}
+                  />
+                </Box>
+                <Box minWidth="150px">
                   <Select
                     label="Category"
                     options={categoryOptions}
                     value={categoryFilter}
                     onChange={handleCategory}
                   />
-                </Layout.Section>
-                <Layout.Section variant="oneThird">
+                </Box>
+                <Box minWidth="150px">
                   <Select
                     label="Brand"
                     options={brandOptions}
                     value={brandFilter}
                     onChange={handleBrand}
                   />
-                </Layout.Section>
-                <Layout.Section variant="oneThird">
-                  {hasFilters && (
-                    <Box paddingBlockStart="600">
-                      <button
-                        onClick={clearFilters}
-                        style={{
-                          background: 'none', border: 'none',
-                          cursor: 'pointer', padding: 0,
-                          color: 'var(--p-color-text-emphasis)',
-                          textDecoration: 'underline',
-                          fontSize: '0.875rem',
-                        }}
-                      >
-                        Clear filters
-                      </button>
-                    </Box>
-                  )}
-                </Layout.Section>
-              </Layout>
+                </Box>
+                {hasFilters && (
+                  <button
+                    onClick={clearFilters}
+                    style={{
+                      background: 'none', border: 'none',
+                      cursor: 'pointer', padding: 0,
+                      color: 'var(--p-color-text-emphasis)',
+                      textDecoration: 'underline',
+                      fontSize: '0.875rem',
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                )}
+              </InlineStack>
             </BlockStack>
           </Box>
 

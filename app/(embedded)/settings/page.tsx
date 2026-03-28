@@ -147,7 +147,13 @@ function PlanCard({
 // Billing Tab
 // ---------------------------------------------------------------------------
 
-function BillingTab({ subscription }: { subscription: SubscriptionInfo | undefined }) {
+function BillingTab({
+  subscription,
+  shopDomain,
+}: {
+  subscription: SubscriptionInfo | undefined;
+  shopDomain: string | undefined;
+}) {
   const queryClient = useQueryClient();
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -164,9 +170,19 @@ function BillingTab({ subscription }: { subscription: SubscriptionInfo | undefin
   const subscribeMutation = useMutation({
     mutationFn: (planId: number) => subscribeToPlan(planId),
     onSuccess: (data) => {
-      const url = data.confirmation_url;
-      if (window.top) window.top.location.assign(url);
-      else window.location.assign(url);
+      if (data.confirmation_url) {
+        // Paid plan — redirect to Shopify billing approval page
+        if (window.top) window.top.location.assign(data.confirmation_url);
+        else window.location.assign(data.confirmation_url);
+      } else if (data.activated) {
+        // Free plan — already active, no Shopify redirect needed
+        void queryClient.invalidateQueries({ queryKey: ['merchantContext'] });
+        const target = shopDomain
+          ? `/dashboard?shop=${shopDomain}`
+          : '/dashboard';
+        if (window.top) window.top.location.assign(target);
+        else window.location.assign(target);
+      }
     },
   });
 
@@ -1015,7 +1031,7 @@ export default function SettingsPage() {
     >
       <Tabs tabs={TABS} selected={selectedTab} onSelect={setSelectedTab}>
         <Box paddingBlockStart="500">
-          {selectedTab === 0 && <BillingTab subscription={subscription} />}
+          {selectedTab === 0 && <BillingTab subscription={subscription} shopDomain={shopDomain} />}
           {selectedTab === 1 && <SyncHealthTab syncHealth={syncHealth} />}
           {selectedTab === 2 && <MarkupTab />}
           {selectedTab === 3 && <CollectionsTab isFreePlan={isFreePlan} />}

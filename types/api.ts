@@ -71,14 +71,23 @@ export interface BillingSubscribeRequest {
   plan_id: number;
 }
 
-/** Response from POST /billing/subscribe */
-export interface BillingSubscribeResponse {
-  /**
-   * Shopify billing confirmation URL (snake_case from backend).
-   * Frontend must redirect the merchant to this URL.
-   */
-  confirmation_url: string;
-}
+/**
+ * Response from POST /billing/subscribe.
+ * Discriminated union — shape depends on whether the plan is free or paid.
+ */
+export type BillingSubscribeResponse =
+  | {
+      /** Paid plan — redirect merchant here for Shopify billing approval. */
+      confirmation_url: string;
+      activated?: never;
+    }
+  | {
+      /** Free plan — already activated server-side, no Shopify redirect needed. */
+      activated: true;
+      plan: string;
+      sku_limit: number;
+      confirmation_url?: never;
+    };
 
 // ---------------------------------------------------------------------------
 // Billing — Cancel
