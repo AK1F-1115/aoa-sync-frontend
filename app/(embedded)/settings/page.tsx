@@ -241,6 +241,60 @@ function BillingTab({
         </BlockStack>
       </Card>
 
+      {/* Pending approval banner — shown when a charge was created but merchant
+          hasn't approved it yet in Shopify. This can happen if the billing
+          redirect didn't fire (e.g. browser blocked it) or if they navigated
+          away before clicking Approve on Shopify's page. */}
+      {subscription?.status === 'pending' && !subscribeMutation.isPending && (
+        <Banner
+          title="Approval required to activate your plan"
+          tone="warning"
+          action={{
+            content: 'Approve in Shopify Admin',
+            onAction: () => {
+              // Re-subscribe to generate a fresh confirmation_url.
+              // The backend will void the previous pending charge and issue a new one.
+              const plan = plans.find((p) => p.slug === (subscription?.planId ?? null));
+              if (plan) subscribeMutation.mutate(plan.id);
+            },
+          }}
+        >
+          <Text as="p">
+            Your <strong>{subscription.planName}</strong> subscription is waiting
+            for billing approval. Click below to be taken to Shopify&apos;s
+            approval page. You won&apos;t be double-charged — any previous
+            pending charge is voided automatically.
+          </Text>
+        </Banner>
+      )}
+
+      {/* Pending approval banner — shown when a charge was created but merchant
+          hasn't approved it yet in Shopify. This can happen if the billing
+          redirect didn't fire (e.g. browser blocked it) or if they navigated
+          away before clicking Approve on Shopify's page.
+          Action re-calls subscribe to get a fresh confirmation_url; the backend
+          must void any existing pending charge and issue a new one. */}
+      {subscription?.status === 'pending' && !subscribeMutation.isPending && (
+        <Banner
+          title="Approval required to activate your plan"
+          tone="warning"
+          action={{
+            content: 'Go to approval page',
+            loading: subscribeMutation.isPending,
+            onAction: () => {
+              const plan = plans.find((p) => p.slug === (subscription?.planId ?? null));
+              if (plan) subscribeMutation.mutate(plan.id);
+            },
+          }}
+        >
+          <Text as="p">
+            Your <strong>{subscription.planName}</strong> plan is waiting for
+            billing approval in Shopify. Click below to complete the approval —
+            you won&apos;t be charged twice.
+          </Text>
+        </Banner>
+      )}
+
       {/* Errors / success banners */}
       {subscribeMutation.isError && (
         <Banner title="Subscription failed" tone="critical">
