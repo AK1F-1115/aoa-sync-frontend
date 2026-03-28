@@ -207,7 +207,12 @@ export default function ProductsPage() {
         <IndexTable.Cell>
           <BlockStack gap="050">
             <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
-            <Text tone="subdued" variant="bodySm" as="span">SKU: {product.aoa_sku}</Text>
+            <InlineStack gap="100" blockAlign="center">
+              <Text tone="subdued" variant="bodySm" as="span">SKU: {product.aoa_sku}</Text>
+              {product.variant_tier != null && product.variant_tier > 1 && (
+                <Badge tone="info" size="small">{`Qty ×${product.variant_tier}`}</Badge>
+              )}
+            </InlineStack>
           </BlockStack>
         </IndexTable.Cell>
         <IndexTable.Cell>
