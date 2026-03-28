@@ -143,13 +143,22 @@ export default function ProductsPage() {
   const total = data?.total ?? 0;
   const pages = data?.pages ?? 1;
 
-  type IndexableProduct = CatalogProduct & { [key: string]: unknown };
+  // Attach a stable per-row ID based on page-offset position.
+  // Using aoa_sku alone causes cross-selection when the backend returns duplicate
+  // SKUs (e.g. retail + VDS variants sharing a base SKU). Position-based IDs are
+  // unique per page and are cleared automatically on any page/filter change.
+  type RowProduct = CatalogProduct & { _rowId: string; [key: string]: unknown };
+  const rowProducts: RowProduct[] = products.map((p, i) => ({
+    ...p,
+    _rowId: `${(page - 1) * PAGE_SIZE + i}`,
+  }));
+
   const {
     selectedResources,
     allResourcesSelected,
     handleSelectionChange,
-  } = useIndexResourceState(products as IndexableProduct[], {
-    resourceIDResolver: (p) => p.aoa_sku,
+  } = useIndexResourceState(rowProducts, {
+    resourceIDResolver: (p) => p._rowId,
   });
 
   // Clear row selection on any filter or page change.
@@ -186,14 +195,14 @@ export default function ProductsPage() {
   const supplierTone = (t: CatalogProduct['product_type']) =>
     t === 'retail' ? ('info' as const) : t === 'vds' ? ('warning' as const) : undefined;
 
-  const rowMarkup = products.map((product, index) => {
+  const rowMarkup = rowProducts.map((product, index) => {
     const status = product.last_shopify_status?.toUpperCase() ?? null;
     return (
       <IndexTable.Row
-        id={product.aoa_sku}
-        key={product.aoa_sku}
+        id={product._rowId}
+        key={product._rowId}
         position={index}
-        selected={selectedResources.includes(product.aoa_sku)}
+        selected={selectedResources.includes(product._rowId)}
       >
         <IndexTable.Cell>
           <BlockStack gap="050">
