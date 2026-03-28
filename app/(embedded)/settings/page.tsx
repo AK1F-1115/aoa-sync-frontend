@@ -29,6 +29,7 @@ import {
   Modal,
   List,
   Box,
+  Checkbox,
 } from '@shopify/polaris';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPlans, subscribeToPlan, cancelSubscription } from '@/lib/api/billing';
@@ -609,6 +610,35 @@ function MarkupTab() {
               Save markup
             </Button>
           </InlineStack>
+        </BlockStack>
+      </Card>
+
+      <Card>
+        <BlockStack gap="400">
+          <Text variant="headingMd" as="h2">Auto-fill Products</Text>
+          <Text as="p" tone="subdued">
+            Automatically fill your plan&apos;s product slots from the AOA catalog
+            on each sync run. Products are added up to your plan limit.
+          </Text>
+          <Divider />
+          <Checkbox
+            label="Auto-fill warehouse products"
+            helpText="Automatically add retail / warehouse products up to your plan limit on each sync."
+            checked={settings?.push_retail ?? false}
+            onChange={(checked) =>
+              updateMutation.mutate({ push_retail: checked })
+            }
+            disabled={updateMutation.isPending}
+          />
+          <Checkbox
+            label="Auto-fill dropship products"
+            helpText="Automatically add VDS dropship products up to your plan limit on each sync."
+            checked={settings?.push_vds ?? false}
+            onChange={(checked) =>
+              updateMutation.mutate({ push_vds: checked })
+            }
+            disabled={updateMutation.isPending}
+          />
         </BlockStack>
       </Card>
     </BlockStack>

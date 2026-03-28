@@ -155,6 +155,10 @@ export interface StoreSettingsResponse {
   auto_shipping_profiles: boolean;
   /** true = profiles exist and all variants are assigned */
   shipping_profiles_bootstrapped: boolean;
+  /** ICAPS auto-fills retail slots up to plan limit on each run */
+  push_retail: boolean;
+  /** ICAPS auto-fills VDS (dropship) slots up to plan limit on each run */
+  push_vds: boolean;
 }
 
 /** Request body for PATCH /store/settings — all fields optional */
@@ -163,6 +167,8 @@ export interface StoreSettingsUpdateRequest {
   markup_pct_vds?: number;
   markup_pct_wholesale?: number;
   auto_shipping_profiles?: boolean;
+  push_retail?: boolean;
+  push_vds?: boolean;
 }
 
 /** Response from PATCH /store/settings */
@@ -254,12 +260,24 @@ export interface CatalogProduct {
   variant_tier: number | null;
   /** "R" = warehouse, "S"/"N" = dropship; null for VDS */
   stocking_indicator: string | null;
+  /**
+   * Whether this product is currently live in the store's Shopify catalog.
+   * Always true for status=active, always false for status=available,
+   * either value for status=all.
+   */
+  in_shopify: boolean;
 }
 
 /** Paginated response from GET /store/catalog */
 export interface CatalogResponse {
-  /** FastAPI pagination key — may be 'items' or 'products' depending on backend */
-  items?: CatalogProduct[];
+  /** How many SKU slots this store has used */
+  slots_used: number;
+  /** Plan SKU limit; null for Pro (unlimited) */
+  slots_total: number | null;
+  /** Remaining slots; null for Pro plan */
+  slots_remaining: number | null;
+  items: CatalogProduct[];
+  /** @deprecated fallback key — use items */
   products?: CatalogProduct[];
   total: number;
   page: number;
@@ -269,6 +287,8 @@ export interface CatalogResponse {
 
 /** Query params for GET /store/catalog */
 export interface CatalogParams {
+  /** 'active' (default) | 'available' | 'all' */
+  status?: 'active' | 'available' | 'all';
   page?: number;
   page_size?: number;
   search?: string;
@@ -297,4 +317,49 @@ export interface CatalogSummary {
   brands: { name: string; count: number }[];
   /** ISO timestamp of the most recent sync */
   last_sync_at: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Catalog Push / Remove
+// ---------------------------------------------------------------------------
+
+/** Request body for POST /store/catalog/push */
+export type PushCatalogRequest =
+  | { skus: string[]; push_all?: never }
+  | { push_all: true; skus?: never };
+
+/** Success response from POST /store/catalog/push */
+export interface PushCatalogResponse {
+  ok: boolean;
+  pushed: number;
+  failed: number;
+  slots_used: number;
+  slots_total: number | null;
+  slots_remaining: number | null;
+  errors: string[];
+  elapsed: number;
+}
+
+/** 400 detail body when plan limit is exceeded */
+export interface PlanLimitExceededDetail {
+  error: 'plan_limit_exceeded';
+  slots_used: number;
+  slots_total: number;
+  slots_remaining: number;
+  requested: number;
+}
+
+/** Request body for DELETE /store/catalog/remove */
+export interface RemoveCatalogRequest {
+  skus: string[];
+}
+
+/** Success response from DELETE /store/catalog/remove */
+export interface RemoveCatalogResponse {
+  ok: boolean;
+  removed: number;
+  failed: number;
+  slots_used: number;
+  slots_total: number | null;
+  slots_remaining: number | null;
 }
