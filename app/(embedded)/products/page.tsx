@@ -174,9 +174,9 @@ export default function ProductsPage() {
   const brandOptions    = toSelectOptions(summary?.brands     ?? [], 'All brands');
 
   const typeOptions: { label: string; value: string }[] = [
-    { label: 'All types', value: ''       },
-    { label: 'Warehouse', value: 'retail' },
-    { label: 'Dropship',  value: 'vds'    },
+    { label: 'All types', value: ''              },
+    { label: 'Warehouse', value: 'essendant'     },
+    { label: 'Dropship',  value: 'essendant_vds' },
   ];
 
   const headings = [
