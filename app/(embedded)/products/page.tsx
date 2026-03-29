@@ -445,7 +445,7 @@ function ProductRow({
       <IndexTable.Cell><Text as="span">{product.brand ?? '—'}</Text></IndexTable.Cell>
       <IndexTable.Cell><Text as="span">{formatPrice(product.aoa_cost)}</Text></IndexTable.Cell>
       <IndexTable.Cell><Text as="span">{formatPrice(product.list_price)}</Text></IndexTable.Cell>
-      <IndexTable.Cell><Text as="span">{product.last_synced_quantity ?? '—'}</Text></IndexTable.Cell>
+      <IndexTable.Cell><Text as="span">{product.catalog_quantity ?? '—'}</Text></IndexTable.Cell>
       <IndexTable.Cell>
         {status ? (
           <Badge tone={status === 'ACTIVE' ? 'success' : undefined}>

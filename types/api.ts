@@ -252,6 +252,13 @@ export interface CatalogProduct {
   list_price: string | null;
   /** Last quantity pushed to Shopify; null = not yet synced */
   last_synced_quantity: number | null;
+  /**
+   * Current AOA warehouse/catalog stock quantity.
+   * active:    COALESCE(p.stock_qty, v.vds_qty)
+   * available: p.stock_qty (retail) or v.vds_qty (VDS)
+   * This is what powers in_stock_only filtering and the Qty column display.
+   */
+  catalog_quantity: number | null;
   /** "ACTIVE" | "DRAFT" | null */
   last_shopify_status: string | null;
   /** "warehouse" | "dropship" | null */
