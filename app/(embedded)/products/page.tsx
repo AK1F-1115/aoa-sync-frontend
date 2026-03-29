@@ -604,6 +604,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   ] as [{ title: string }, ...{ title: string }[]];
 
   const showPushError = pushError !== null || (pushMutation.isError && !pushError);
+  const atLimit = data != null && data.slots_remaining === 0;
 
   return (
     <BlockStack gap="400">
@@ -647,6 +648,16 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
         </Banner>
       )}
 
+      {atLimit && (
+        <Banner title="You've reached your plan limit" tone="warning">
+          <Text as="p">
+            All {data!.slots_total != null ? data!.slots_total.toLocaleString() : ''} slots are in use.
+            Remove products from the <strong>My Shopify Catalog</strong> tab to free up space,
+            or upgrade your plan to add more.
+          </Text>
+        </Banner>
+      )}
+
       <Card padding="0">
         <FilterBar
           searchValue={searchValue}
@@ -663,7 +674,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
           onClear={clearFilters}
         />
 
-        {selectedResources.length > 0 && (
+        {selectedResources.length > 0 && !atLimit && (
           <Box padding="400" paddingBlockStart="0">
             <InlineStack gap="300" blockAlign="center">
               <Text as="span" tone="subdued" variant="bodySm">{selectedResources.length} selected</Text>
@@ -714,6 +725,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
                   <Button
                     size="slim"
                     variant="primary"
+                    disabled={atLimit}
                     loading={pushMutation.isPending}
                     onClick={() => { setPushError(null); pushMutation.mutate([product.aoa_sku]); }}
                   >

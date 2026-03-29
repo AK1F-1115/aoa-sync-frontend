@@ -29,12 +29,15 @@ import { getSessionToken } from '@/lib/shopify/appBridge';
 export class ApiError extends Error {
   public readonly status: number;
   public readonly code?: string;
+  /** Raw detail payload from the backend (may be a string or object). */
+  public readonly detail?: unknown;
 
-  constructor(status: number, message: string, code?: string) {
+  constructor(status: number, message: string, code?: string, detail?: unknown) {
     super(message);
     this.name = 'ApiError';
     this.status = status;
     this.code = code;
+    this.detail = detail;
   }
 }
 
@@ -71,11 +74,12 @@ export async function apiFetch<T>(
   if (!response.ok) {
     let message = `Request failed: ${response.status} ${response.statusText}`;
     let code: string | undefined;
+    let rawDetail: unknown;
 
     try {
       const body = (await response.json()) as {
         // FastAPI uses 'detail' for error messages
-        detail?: string | { msg: string }[];
+        detail?: string | { msg: string }[] | Record<string, unknown>;
         // Legacy / custom fields
         message?: string;
         code?: string;
@@ -85,6 +89,12 @@ export async function apiFetch<T>(
         message = body.detail;
       } else if (Array.isArray(body.detail) && body.detail[0]?.msg) {
         message = body.detail[0].msg;
+      } else if (body.detail && typeof body.detail === 'object') {
+        // Object detail — e.g. { error: 'plan_limit_exceeded', ... }
+        rawDetail = body.detail;
+        const d = body.detail as { message?: string; error?: string };
+        if (typeof d.message === 'string') message = d.message;
+        else if (typeof d.error === 'string') message = d.error;
       } else if (body.message) {
         message = body.message;
       }
@@ -93,7 +103,7 @@ export async function apiFetch<T>(
       // Body was not JSON — use status text
     }
 
-    throw new ApiError(response.status, message, code);
+    throw new ApiError(response.status, message, code, rawDetail);
   }
 
   // Handle 204 No Content
@@ -131,10 +141,11 @@ export async function apiFetchPublic<T>(
   if (!response.ok) {
     let message = `Request failed: ${response.status} ${response.statusText}`;
     let code: string | undefined;
+    let rawDetail: unknown;
 
     try {
       const body = (await response.json()) as {
-        detail?: string | { msg: string }[];
+        detail?: string | { msg: string }[] | Record<string, unknown>;
         message?: string;
         code?: string;
       };
@@ -142,6 +153,11 @@ export async function apiFetchPublic<T>(
         message = body.detail;
       } else if (Array.isArray(body.detail) && body.detail[0]?.msg) {
         message = body.detail[0].msg;
+      } else if (body.detail && typeof body.detail === 'object') {
+        rawDetail = body.detail;
+        const d = body.detail as { message?: string; error?: string };
+        if (typeof d.message === 'string') message = d.message;
+        else if (typeof d.error === 'string') message = d.error;
       } else if (body.message) {
         message = body.message;
       }
@@ -150,7 +166,7 @@ export async function apiFetchPublic<T>(
       // Body was not JSON — use status text
     }
 
-    throw new ApiError(response.status, message, code);
+    throw new ApiError(response.status, message, code, rawDetail);
   }
 
   if (response.status === 204) {
