@@ -325,6 +325,11 @@ export interface CatalogParams {
   sort_by?: 'name' | 'merchant_cost' | 'list_price' | 'margin' | 'quantity';
   /** Sort direction — defaults to 'asc' */
   sort_dir?: 'asc' | 'desc';
+  /**
+   * Filter by tag values — multiple tags use OR logic.
+   * Examples: 'hazmat', 'prop65', 'new-arrival', 'marketplace:no-amazon', 'stock-status:limited'
+   */
+  tags?: string[];
 }
 
 /** Top-level aggregate from GET /store/catalog/summary */

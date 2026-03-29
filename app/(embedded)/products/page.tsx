@@ -277,6 +277,103 @@ function FilterBar({
 }
 
 // ---------------------------------------------------------------------------
+// Tag filter definitions + components
+// ---------------------------------------------------------------------------
+
+const TAG_FILTER_GROUPS = [
+  {
+    label: 'Discovery',
+    items: [
+      { value: 'new-arrival',            label: 'New arrivals'  },
+      { value: 'stock-status:preorder',   label: 'Preorder'      },
+      { value: 'stock-status:limited',    label: 'Limited stock' },
+    ],
+  },
+  {
+    label: 'Compliance',
+    items: [
+      { value: 'hazmat',          label: 'Hazmat'         },
+      { value: 'prop65',          label: 'Prop 65'        },
+      { value: 'non-returnable',  label: 'Non-returnable' },
+    ],
+  },
+  {
+    label: 'Marketplace',
+    items: [
+      { value: 'marketplace:no-amazon',   label: 'No Amazon'  },
+      { value: 'marketplace:prohibited',  label: 'Restricted' },
+    ],
+  },
+];
+
+function TagFilterCheckboxes({
+  activeTags,
+  onToggle,
+}: {
+  activeTags: string[];
+  onToggle: (tag: string) => void;
+}) {
+  return (
+    <BlockStack gap="300">
+      {TAG_FILTER_GROUPS.map((group) => (
+        <InlineStack key={group.label} gap="400" blockAlign="center" wrap>
+          <Box minWidth="90px">
+            <Text as="span" variant="bodySm" fontWeight="semibold" tone="subdued">{group.label}</Text>
+          </Box>
+          {group.items.map((item) => (
+            <Checkbox
+              key={item.value}
+              label={item.label}
+              checked={activeTags.includes(item.value)}
+              onChange={() => onToggle(item.value)}
+            />
+          ))}
+        </InlineStack>
+      ))}
+    </BlockStack>
+  );
+}
+
+/** Standalone collapsible tag filter panel — used in the My Shopify Catalog tab. */
+function TagFilterSection({
+  activeTags,
+  onToggle,
+  onClearAll,
+}: {
+  activeTags: string[];
+  onToggle: (tag: string) => void;
+  onClearAll: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const linkBtn: React.CSSProperties = {
+    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+    color: 'var(--p-color-text-emphasis)', fontSize: '0.875rem',
+  };
+  return (
+    <Box paddingInline="400" paddingBlock="300">
+      <BlockStack gap="300">
+        <InlineStack gap="200" blockAlign="center">
+          <button style={linkBtn} onClick={() => setExpanded((e) => !e)}>
+            {expanded ? '\u25b2 Tag filters' : '\u25bc Tag filters'}
+          </button>
+          {activeTags.length > 0 && <Badge tone="info">{`${activeTags.length} active`}</Badge>}
+          {activeTags.length > 0 && (
+            <button style={{ ...linkBtn, textDecoration: 'underline' }} onClick={onClearAll}>
+              Clear
+            </button>
+          )}
+        </InlineStack>
+        {expanded && (
+          <Box background="bg-surface-secondary" padding="400">
+            <TagFilterCheckboxes activeTags={activeTags} onToggle={onToggle} />
+          </Box>
+        )}
+      </BlockStack>
+    </Box>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Research filter panel (Available to Add tab only)
 // ---------------------------------------------------------------------------
 
@@ -289,6 +386,7 @@ function ResearchFilterSection({
   inStockOnly, onInStockOnly,
   sortBy, onSortBy,
   sortDir, onSortDir,
+  activeTags, onToggleTag,
   activeCount,
   onClear,
 }: {
@@ -300,6 +398,7 @@ function ResearchFilterSection({
   inStockOnly: boolean; onInStockOnly: (v: boolean) => void;
   sortBy: string;       onSortBy: (v: string) => void;
   sortDir: 'asc' | 'desc'; onSortDir: (v: 'asc' | 'desc') => void;
+  activeTags: string[];    onToggleTag: (tag: string) => void;
   activeCount: number;
   onClear: () => void;
 }) {
@@ -435,6 +534,9 @@ function ResearchFilterSection({
                   />
                 </Box>
               </InlineStack>
+              <Divider />
+              {/* Tag filters */}
+              <TagFilterCheckboxes activeTags={activeTags} onToggle={onToggleTag} />
             </BlockStack>
           </Box>
         )}
@@ -656,29 +758,36 @@ function ActiveCatalogTab({
   const [supplierFilter, setSupplierFilter] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
+  const [tagFilters,  setTagFilters]  = useState<string[]>([]);
 
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(searchValue); setPage(1); }, 400);
     return () => clearTimeout(t);
   }, [searchValue]);
 
-  const handleSupplier = useCallback((v: string) => { setSupplierFilter(v); setPage(1); }, []);
-  const handleCategory = useCallback((v: string) => { setCategoryFilter(v); setPage(1); }, []);
-  const handleBrand    = useCallback((v: string) => { setBrandFilter(v);    setPage(1); }, []);
-  const clearFilters   = () => {
+  const handleSupplier  = useCallback((v: string) => { setSupplierFilter(v); setPage(1); }, []);
+  const handleCategory  = useCallback((v: string) => { setCategoryFilter(v); setPage(1); }, []);
+  const handleBrand     = useCallback((v: string) => { setBrandFilter(v);    setPage(1); }, []);
+  const handleToggleTag = useCallback((tag: string) => {
+    setTagFilters((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
+    setPage(1);
+  }, []);
+  const clearFilters = () => {
     setSearchValue(''); setDebouncedSearch('');
     setSupplierFilter(''); setCategoryFilter(''); setBrandFilter('');
+    setTagFilters([]);
     setPage(1);
   };
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
-    queryKey: ['catalog', 'active', page, debouncedSearch, supplierFilter, categoryFilter, brandFilter],
+    queryKey: ['catalog', 'active', page, debouncedSearch, supplierFilter, categoryFilter, brandFilter, [...tagFilters].sort().join(',')],
     queryFn: () => getCatalog({
       status: 'active', page, page_size: PAGE_SIZE,
       search:   debouncedSearch || undefined,
       supplier: supplierFilter  || undefined,
       category: categoryFilter  || undefined,
       brand:    brandFilter     || undefined,
+      tags:     tagFilters.length > 0 ? tagFilters : undefined,
     }),
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -708,14 +817,14 @@ function ActiveCatalogTab({
   useEffect(() => {
     (handleSelectionChange as (t: string, s: boolean) => void)('all', false);
     setExpandedSkus(new Set());
-  }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter]);
+  }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter, tagFilters]);
 
   const removeMutation = useMutation({
     mutationFn: (skus: string[]) => removeCatalog({ skus }),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['catalog'] }); },
   });
 
-  const hasFilters = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
+  const hasFilters = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter || tagFilters.length > 0);
   const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
   const brandOptions    = toSelectOptions(summary?.brands     ?? [], 'All brands');
 
@@ -782,6 +891,13 @@ function ActiveCatalogTab({
           brandOptions={brandOptions}
           hasFilters={hasFilters}
           onClear={clearFilters}
+        />
+
+        <Divider />
+        <TagFilterSection
+          activeTags={tagFilters}
+          onToggle={handleToggleTag}
+          onClearAll={() => { setTagFilters([]); setPage(1); }}
         />
 
         {selectedResources.length > 0 && (
@@ -895,6 +1011,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sortBy, setSortBy] = useState('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+  const [tagFilters, setTagFilters] = useState<string[]>([]);
 
   // Debounced price fields (600ms — longer than search to avoid rapid calls while typing)
   const [dMinCost, setDMinCost] = useState('');
@@ -923,6 +1040,10 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const handleInStock   = useCallback((v: boolean)      => { setInStockOnly(v);   setPage(1); }, []);
   const handleSortBy    = useCallback((v: string)       => { setSortBy(v);         setPage(1); }, []);
   const handleSortDir   = useCallback((v: 'asc'|'desc') => setSortDir(v), []);
+  const handleToggleTag = useCallback((tag: string) => {
+    setTagFilters((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
+    setPage(1);
+  }, []);
 
   const clearFilters = () => {
     setSearchValue(''); setDebouncedSearch('');
@@ -933,7 +1054,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const clearResearchFilters = () => {
     setMinCost(''); setMaxCost(''); setDMinCost(''); setDMaxCost('');
     setMinListPrice(''); setMaxListPrice(''); setDMinList(''); setDMaxList('');
-    setMinMargin(''); setInStockOnly(false);
+    setMinMargin(''); setInStockOnly(false); setTagFilters([]);
     setPage(1);
   };
 
@@ -942,6 +1063,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
       'catalog', 'available', page,
       debouncedSearch, supplierFilter, categoryFilter, brandFilter,
       dMinCost, dMaxCost, dMinList, dMaxList, minMargin, inStockOnly, sortBy, sortDir,
+      [...tagFilters].sort().join(','),
     ],
     queryFn: () => getCatalog({
       status: 'available', page, page_size: PAGE_SIZE,
@@ -957,6 +1079,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
       in_stock_only:  inStockOnly     || undefined,
       sort_by:        (sortBy as CatalogParams['sort_by']) || undefined,
       sort_dir:       sortBy          ? sortDir : undefined,
+      tags:           tagFilters.length > 0 ? tagFilters : undefined,
     }),
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -987,7 +1110,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
     (handleSelectionChange as (t: string, s: boolean) => void)('all', false);
     setExpandedSkus(new Set());
   }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter,
-      dMinCost, dMaxCost, dMinList, dMaxList, minMargin, inStockOnly, sortBy, sortDir]);
+      dMinCost, dMaxCost, dMinList, dMaxList, minMargin, inStockOnly, sortBy, sortDir, tagFilters]);
 
   const pushMutation = useMutation({
     mutationFn: (skus: string[]) => pushCatalog({ skus }),
@@ -1016,7 +1139,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
 
   const hasBasicFilters    = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
   const researchActiveCount = [dMinCost, dMaxCost, dMinList, dMaxList, minMargin]
-    .filter(Boolean).length + (inStockOnly ? 1 : 0);
+    .filter(Boolean).length + (inStockOnly ? 1 : 0) + tagFilters.length;
   const hasFilters = hasBasicFilters || researchActiveCount > 0 || Boolean(sortBy);
 
   const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
@@ -1115,6 +1238,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
           inStockOnly={inStockOnly}   onInStockOnly={handleInStock}
           sortBy={sortBy}             onSortBy={handleSortBy}
           sortDir={sortDir}           onSortDir={handleSortDir}
+          activeTags={tagFilters}     onToggleTag={handleToggleTag}
           activeCount={researchActiveCount}
           onClear={clearResearchFilters}
         />

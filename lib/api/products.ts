@@ -57,6 +57,7 @@ export async function getCatalog(
   if (params?.in_stock_only)          query.set('in_stock_only',  'true');
   if (params?.sort_by)                query.set('sort_by',        params.sort_by);
   if (params?.sort_dir)               query.set('sort_dir',       params.sort_dir);
+  for (const tag of (params?.tags ?? [])) query.append('tags', tag);
 
   const qs = query.toString();
   return apiFetch<CatalogResponse>(`/store/catalog${qs ? `?${qs}` : ''}`);
