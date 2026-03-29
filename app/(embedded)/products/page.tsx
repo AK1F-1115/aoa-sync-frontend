@@ -1009,9 +1009,11 @@ export default function ProductsPage() {
     staleTime: 2 * 60_000,
   });
 
-  // Light query for the page subtitle (1 item, cached)
+  // Light query for the page subtitle — '_count' discriminator prevents
+  // this page_size:1 entry from colliding with the ActiveCatalogTab's
+  // page_size:25 query, which shares the same filter-state key at rest.
   const { data: activeCountData } = useQuery({
-    queryKey: ['catalog', 'active', 1, '', '', '', ''],
+    queryKey: ['catalog', 'active', '_count'],
     queryFn: () => getCatalog({ status: 'active', page: 1, page_size: 1 }),
     staleTime: 2 * 60_000,
   });
