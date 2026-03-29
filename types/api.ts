@@ -247,8 +247,8 @@ export interface CatalogProduct {
   /** Full Shopify GID e.g. "gid://shopify/Product/123"; null if not yet pushed */
   shopify_product_id: string | null;
   /** What AOA charges the merchant: cost_price × (1 + plan.aoa_markup_pct); null if no plan or cost missing */
-  aoa_cost: string | null;
-  /** What customers pay on Shopify: aoa_cost × (1 + store.shopify_markup_pct); null if not yet price-synced */
+  merchant_cost: string | null;
+  /** What customers pay on Shopify: merchant_cost × (1 + store.shopify_markup_pct); reliably populated for all product types */
   list_price: string | null;
   /** Last quantity pushed to Shopify; null = not yet synced */
   last_synced_quantity: number | null;
@@ -273,6 +273,12 @@ export interface CatalogProduct {
    * either value for status=all.
    */
   in_shopify: boolean;
+  /**
+   * Tags applied to this product — same tags pushed to Shopify.
+   * Namespaces: source: | fulfillment: | marketplace: | country: | uom: | stock-status: | prop65:
+   * Bare tags: hazmat | non-returnable | new-arrival | prop65
+   */
+  tags: string[];
 }
 
 /** Paginated response from GET /store/catalog */
@@ -316,7 +322,7 @@ export interface CatalogParams {
   /** Only return products with last_synced_quantity > 0 */
   in_stock_only?: boolean;
   /** Field to sort results by */
-  sort_by?: 'name' | 'aoa_cost' | 'list_price' | 'margin' | 'quantity';
+  sort_by?: 'name' | 'merchant_cost' | 'list_price' | 'margin' | 'quantity';
   /** Sort direction — defaults to 'asc' */
   sort_dir?: 'asc' | 'desc';
 }

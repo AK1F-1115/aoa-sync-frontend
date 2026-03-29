@@ -65,6 +65,54 @@ function parsePlanLimitDetail(err: unknown): PlanLimitExceededDetail | null {
 }
 
 // ---------------------------------------------------------------------------
+// Tag helpers
+// ---------------------------------------------------------------------------
+
+function getTagsByNamespace(tags: string[], ns: string): string[] {
+  return tags.filter(t => t.startsWith(`${ns}:`)).map(t => t.slice(ns.length + 1));
+}
+
+const BARE_NOTICE_TAGS: Record<string, { label: string; tone: 'critical' | 'warning' | 'attention' | 'success' | 'info' }> = {
+  'hazmat':              { label: 'Hazmat',        tone: 'critical'   },
+  'prop65':              { label: 'Prop 65',        tone: 'warning'    },
+  'prop65:ca-restricted':{ label: 'Prop 65 CA',    tone: 'warning'    },
+  'non-returnable':      { label: 'Non-returnable', tone: 'attention'  },
+  'new-arrival':         { label: 'New arrival',   tone: 'success'    },
+};
+
+const MARKETPLACE_NOTICE_TAGS: Record<string, { label: string; tone: 'critical' | 'warning' | 'attention' }> = {
+  'prohibited':          { label: 'Restricted',    tone: 'critical'   },
+  'no-amazon':           { label: 'No Amazon',     tone: 'attention'  },
+  'authorized-only':     { label: 'Auth only',     tone: 'attention'  },
+};
+
+const STOCK_STATUS_TAGS: Record<string, { label: string; tone: 'warning' | 'info' }> = {
+  'limited':             { label: 'Limited stock', tone: 'warning'    },
+  'preorder':            { label: 'Preorder',      tone: 'info'       },
+};
+
+function ProductTagBadges({ tags }: { tags?: string[] }) {
+  if (!tags || tags.length === 0) return null;
+
+  const badges: React.ReactNode[] = [];
+
+  for (const [tag, cfg] of Object.entries(BARE_NOTICE_TAGS)) {
+    if (tags.includes(tag)) badges.push(<Badge key={tag} tone={cfg.tone} size="small">{cfg.label}</Badge>);
+  }
+  for (const mkt of getTagsByNamespace(tags, 'marketplace')) {
+    const cfg = MARKETPLACE_NOTICE_TAGS[mkt];
+    if (cfg) badges.push(<Badge key={`mp-${mkt}`} tone={cfg.tone} size="small">{cfg.label}</Badge>);
+  }
+  for (const st of getTagsByNamespace(tags, 'stock-status')) {
+    const cfg = STOCK_STATUS_TAGS[st];
+    if (cfg) badges.push(<Badge key={`ss-${st}`} tone={cfg.tone} size="small">{cfg.label}</Badge>);
+  }
+
+  if (badges.length === 0) return null;
+  return <InlineStack gap="100" blockAlign="center">{badges}</InlineStack>;
+}
+
+// ---------------------------------------------------------------------------
 // Slot counter
 // ---------------------------------------------------------------------------
 
@@ -270,7 +318,7 @@ function ResearchFilterSection({
     { label: 'Default order',     value: ''           },
     { label: 'Margin %',          value: 'margin'     },
     { label: 'List price',        value: 'list_price' },
-    { label: 'Cost',              value: 'aoa_cost'   },
+    { label: 'Cost',              value: 'merchant_cost' },
     { label: 'In-stock quantity', value: 'quantity'   },
     { label: 'Name',              value: 'name'       },
   ];
@@ -322,9 +370,9 @@ function ResearchFilterSection({
                 Margin is estimated using your current markup settings.
               </Text>
               <InlineStack gap="600" blockAlign="end" wrap>
-                {/* AOA cost range */}
+                {/* Merchant cost range */}
                 <BlockStack gap="150">
-                  <Text as="span" variant="bodySm" fontWeight="semibold">AOA cost</Text>
+                  <Text as="span" variant="bodySm" fontWeight="semibold">Your cost</Text>
                   <InlineStack gap="150" blockAlign="center">
                     <Box minWidth="88px" maxWidth="88px">
                       <TextField
@@ -430,6 +478,7 @@ function ProductRow({
               <Badge tone="info" size="small">{`Qty ×${product.variant_tier}`}</Badge>
             )}
           </InlineStack>
+          <ProductTagBadges tags={product.tags} />
         </BlockStack>
       </IndexTable.Cell>
       <IndexTable.Cell>
@@ -443,7 +492,7 @@ function ProductRow({
       </IndexTable.Cell>
       <IndexTable.Cell><Text as="span">{product.category_1 ?? '—'}</Text></IndexTable.Cell>
       <IndexTable.Cell><Text as="span">{product.brand ?? '—'}</Text></IndexTable.Cell>
-      <IndexTable.Cell><Text as="span">{formatPrice(product.aoa_cost)}</Text></IndexTable.Cell>
+      <IndexTable.Cell><Text as="span">{formatPrice(product.merchant_cost)}</Text></IndexTable.Cell>
       <IndexTable.Cell><Text as="span">{formatPrice(product.list_price)}</Text></IndexTable.Cell>
       <IndexTable.Cell><Text as="span">{product.catalog_quantity ?? '—'}</Text></IndexTable.Cell>
       <IndexTable.Cell>
@@ -519,6 +568,7 @@ function ProductGroupRows({
                 {isExpanded ? '\u25b2 hide' : '\u25bc expand'}
               </button>
             </InlineStack>
+            <ProductTagBadges tags={first.tags} />
           </BlockStack>
         </IndexTable.Cell>
         <IndexTable.Cell>
@@ -532,7 +582,7 @@ function ProductGroupRows({
         <IndexTable.Cell><Text as="span">{first.brand ?? '\u2014'}</Text></IndexTable.Cell>
         <IndexTable.Cell>
           <Text as="span" tone="subdued">
-            {isExpanded ? 'See tiers' : `$${Math.min(...group.map(p => parseFloat(p.aoa_cost ?? '0') || 0)).toFixed(2)}\u2009\u2013\u2009$${Math.max(...group.map(p => parseFloat(p.aoa_cost ?? '0') || 0)).toFixed(2)}`}
+            {isExpanded ? 'See tiers' : `$${Math.min(...group.map(p => parseFloat(p.merchant_cost ?? '0') || 0)).toFixed(2)}\u2009\u2013\u2009$${Math.max(...group.map(p => parseFloat(p.merchant_cost ?? '0') || 0)).toFixed(2)}`}
           </Text>
         </IndexTable.Cell>
         <IndexTable.Cell>
@@ -577,7 +627,7 @@ function ProductGroupRows({
           <IndexTable.Cell />
           <IndexTable.Cell />
           <IndexTable.Cell />
-          <IndexTable.Cell><Text as="span">{formatPrice(product.aoa_cost)}</Text></IndexTable.Cell>
+          <IndexTable.Cell><Text as="span">{formatPrice(product.merchant_cost)}</Text></IndexTable.Cell>
           <IndexTable.Cell><Text as="span">{formatPrice(product.list_price)}</Text></IndexTable.Cell>
           <IndexTable.Cell><Text as="span">{product.catalog_quantity ?? '\u2014'}</Text></IndexTable.Cell>
           <IndexTable.Cell />
