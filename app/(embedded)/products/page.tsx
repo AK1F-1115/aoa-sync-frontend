@@ -73,11 +73,12 @@ function getTagsByNamespace(tags: string[], ns: string): string[] {
 }
 
 const BARE_NOTICE_TAGS: Record<string, { label: string; tone: 'critical' | 'warning' | 'attention' | 'success' | 'info' }> = {
-  'hazmat':              { label: 'Hazmat',        tone: 'critical'   },
-  'prop65':              { label: 'Prop 65',        tone: 'warning'    },
-  'prop65:ca-restricted':{ label: 'Prop 65 CA',    tone: 'warning'    },
-  'non-returnable':      { label: 'Non-returnable', tone: 'attention'  },
-  'new-arrival':         { label: 'New arrival',   tone: 'success'    },
+  'hazmat':               { label: 'Hazmat',          tone: 'critical'  },
+  // prop65 (generic) intentionally omitted — it applies to nearly all catalog products
+  // and provides no useful signal as a per-row badge.
+  'prop65:ca-restricted': { label: 'Prop 65 CA restricted', tone: 'warning' },
+  'non-returnable':       { label: 'Non-returnable',  tone: 'attention' },
+  'new-arrival':          { label: 'New arrival',     tone: 'success'   },
 };
 
 const MARKETPLACE_NOTICE_TAGS: Record<string, { label: string; tone: 'critical' | 'warning' | 'attention' }> = {
@@ -284,24 +285,25 @@ const TAG_FILTER_GROUPS = [
   {
     label: 'Discovery',
     items: [
-      { value: 'new-arrival',            label: 'New arrivals'  },
-      { value: 'stock-status:preorder',   label: 'Preorder'      },
-      { value: 'stock-status:limited',    label: 'Limited stock' },
+      { value: 'new-arrival',           label: 'New arrivals'   },
+      { value: 'stock-status:preorder',  label: 'Preorder'       },
+      { value: 'stock-status:limited',   label: 'Limited stock'  },
     ],
   },
   {
     label: 'Compliance',
     items: [
-      { value: 'hazmat',          label: 'Hazmat'         },
-      { value: 'prop65',          label: 'Prop 65'        },
-      { value: 'non-returnable',  label: 'Non-returnable' },
+      { value: 'hazmat',              label: 'Hazmat'                    },
+      { value: 'prop65',              label: 'Prop 65 warning (common)'  },
+      { value: 'prop65:ca-restricted', label: 'Prop 65 CA restricted'    },
+      { value: 'non-returnable',      label: 'Non-returnable'            },
     ],
   },
   {
     label: 'Marketplace',
     items: [
-      { value: 'marketplace:no-amazon',   label: 'No Amazon'  },
-      { value: 'marketplace:prohibited',  label: 'Restricted' },
+      { value: 'marketplace:no-amazon',  label: 'No Amazon'  },
+      { value: 'marketplace:prohibited', label: 'Restricted' },
     ],
   },
 ];
@@ -315,6 +317,9 @@ function TagFilterCheckboxes({
 }) {
   return (
     <BlockStack gap="300">
+      <Text as="p" variant="bodySm" tone="subdued">
+        Tag filters are sent to the server — server-side filtering support is required for results to change.
+      </Text>
       {TAG_FILTER_GROUPS.map((group) => (
         <InlineStack key={group.label} gap="400" blockAlign="center" wrap>
           <Box minWidth="90px">
