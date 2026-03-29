@@ -461,6 +461,134 @@ function ProductRow({
 }
 
 // ---------------------------------------------------------------------------
+// Shared type + helpers for grouped (quantity-tier) rows
+// ---------------------------------------------------------------------------
+
+type RowProduct = CatalogProduct & { _rowId: string; [key: string]: unknown };
+
+/** Group a flat product list by aoa_sku. Any group with >1 item = quantity-tier pricing. */
+function groupBySkuWithTiers(products: RowProduct[]): RowProduct[][] {
+  const map = new Map<string, RowProduct[]>();
+  for (const p of products) {
+    const g = map.get(p.aoa_sku);
+    if (g) g.push(p); else map.set(p.aoa_sku, [p]);
+  }
+  return Array.from(map.values());
+}
+
+/**
+ * Renders a quantity-tier SKU group as an expandable set of IndexTable rows.
+ * The header row shows product meta + a toggle; child rows reveal per-tier
+ * cost/price details when expanded.
+ */
+function ProductGroupRows({
+  group,
+  startIndex,
+  selectedResources,
+  isExpanded,
+  onToggle,
+  actionButton,
+}: {
+  group: RowProduct[];
+  startIndex: number;
+  selectedResources: string[];
+  isExpanded: boolean;
+  onToggle: () => void;
+  actionButton?: React.ReactNode;
+}) {
+  const first = group[0];
+  const count = group.length;
+  const status = first.last_shopify_status?.toUpperCase() ?? null;
+
+  const toggleStyle: React.CSSProperties = {
+    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+    color: 'var(--p-color-text-emphasis)', fontSize: '0.75rem', lineHeight: 1,
+  };
+
+  return (
+    <>
+      {/* Header row — one checkbox covers the whole group */}
+      <IndexTable.Row id={first._rowId} position={startIndex} selected={selectedResources.includes(first._rowId)}>
+        <IndexTable.Cell>
+          <BlockStack gap="050">
+            <Text fontWeight="semibold" as="span">{first.product_name ?? '\u2014'}</Text>
+            <InlineStack gap="100" blockAlign="center">
+              <Text tone="subdued" variant="bodySm" as="span">SKU: {first.aoa_sku}</Text>
+              <Badge tone="attention" size="small">{`${count} price tiers`}</Badge>
+              <button style={toggleStyle} onClick={onToggle}>
+                {isExpanded ? '\u25b2 hide' : '\u25bc expand'}
+              </button>
+            </InlineStack>
+          </BlockStack>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          {supplierLabel(first.product_type) ? (
+            <Badge tone={supplierTone(first.product_type)}>
+              {supplierLabel(first.product_type)!}
+            </Badge>
+          ) : <Text as="span" tone="subdued">\u2014</Text>}
+        </IndexTable.Cell>
+        <IndexTable.Cell><Text as="span">{first.category_1 ?? '\u2014'}</Text></IndexTable.Cell>
+        <IndexTable.Cell><Text as="span">{first.brand ?? '\u2014'}</Text></IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span" tone="subdued">
+            {isExpanded ? 'See tiers' : `$${Math.min(...group.map(p => parseFloat(p.aoa_cost ?? '0') || 0)).toFixed(2)}\u2009\u2013\u2009$${Math.max(...group.map(p => parseFloat(p.aoa_cost ?? '0') || 0)).toFixed(2)}`}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell>
+          <Text as="span" tone="subdued">
+            {isExpanded ? 'See tiers' : `$${Math.min(...group.map(p => parseFloat(p.list_price ?? '0') || 0)).toFixed(2)}\u2009\u2013\u2009$${Math.max(...group.map(p => parseFloat(p.list_price ?? '0') || 0)).toFixed(2)}`}
+          </Text>
+        </IndexTable.Cell>
+        <IndexTable.Cell><Text as="span">{first.catalog_quantity ?? '\u2014'}</Text></IndexTable.Cell>
+        <IndexTable.Cell>
+          {status ? (
+            <Badge tone={status === 'ACTIVE' ? 'success' : undefined}>
+              {status.charAt(0) + status.slice(1).toLowerCase()}
+            </Badge>
+          ) : <Badge tone="new">Not pushed</Badge>}
+        </IndexTable.Cell>
+        {actionButton && <IndexTable.Cell>{actionButton}</IndexTable.Cell>}
+      </IndexTable.Row>
+
+      {/* Tier child rows — only rendered when expanded */}
+      {isExpanded && group.map((product, i) => (
+        <IndexTable.Row
+          key={product._rowId}
+          id={product._rowId}
+          position={startIndex + 1 + i}
+          selected={selectedResources.includes(product._rowId)}
+          tone="subdued"
+        >
+          <IndexTable.Cell>
+            <Box paddingInlineStart="600">
+              <InlineStack gap="100" blockAlign="center">
+                <Text tone="subdued" variant="bodySm" as="span">
+                  {product.variant_tier != null && product.variant_tier > 1
+                    ? `Min qty: ${product.variant_tier}`
+                    : `Tier ${i + 1}`}
+                </Text>
+                {product.variant_tier != null && product.variant_tier > 1 && (
+                  <Badge tone="info" size="small">{`Qty \u00d7${product.variant_tier}`}</Badge>
+                )}
+              </InlineStack>
+            </Box>
+          </IndexTable.Cell>
+          <IndexTable.Cell />
+          <IndexTable.Cell />
+          <IndexTable.Cell />
+          <IndexTable.Cell><Text as="span">{formatPrice(product.aoa_cost)}</Text></IndexTable.Cell>
+          <IndexTable.Cell><Text as="span">{formatPrice(product.list_price)}</Text></IndexTable.Cell>
+          <IndexTable.Cell><Text as="span">{product.catalog_quantity ?? '\u2014'}</Text></IndexTable.Cell>
+          <IndexTable.Cell />
+          <IndexTable.Cell />
+        </IndexTable.Row>
+      ))}
+    </>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // "My Shopify Catalog" tab  (status=active)
 // ---------------------------------------------------------------------------
 
@@ -509,7 +637,6 @@ function ActiveCatalogTab({
   const products = data?.items ?? data?.products ?? [];
   const pages    = data?.pages ?? 1;
 
-  type RowProduct = CatalogProduct & { _rowId: string; [key: string]: unknown };
   const rowProducts: RowProduct[] = products.map((p, i) => ({
     ...p,
     _rowId: `active-${(page - 1) * PAGE_SIZE + i}`,
@@ -518,9 +645,19 @@ function ActiveCatalogTab({
   const { selectedResources, allResourcesSelected, handleSelectionChange } =
     useIndexResourceState(rowProducts, { resourceIDResolver: (p) => p._rowId });
 
+  const [expandedSkus, setExpandedSkus] = useState<Set<string>>(new Set());
+  const toggleExpand = useCallback((sku: string) => {
+    setExpandedSkus((prev) => {
+      const next = new Set(prev);
+      if (next.has(sku)) next.delete(sku); else next.add(sku);
+      return next;
+    });
+  }, []);
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     (handleSelectionChange as (t: string, s: boolean) => void)('all', false);
+    setExpandedSkus(new Set());
   }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter]);
 
   const removeMutation = useMutation({
@@ -532,9 +669,11 @@ function ActiveCatalogTab({
   const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
   const brandOptions    = toSelectOptions(summary?.brands     ?? [], 'All brands');
 
-  const selectedSkus = selectedResources
-    .map((rowId) => rowProducts.find((p) => p._rowId === rowId)?.aoa_sku)
-    .filter((sku): sku is string => sku !== undefined);
+  const selectedSkus = [...new Set(
+    selectedResources
+      .map((rowId) => rowProducts.find((p) => p._rowId === rowId)?.aoa_sku)
+      .filter((sku): sku is string => sku !== undefined)
+  )];
 
   const headings = [
     { title: 'Product' }, { title: 'Type' }, { title: 'Category' }, { title: 'Brand' },
@@ -635,26 +774,34 @@ function ActiveCatalogTab({
             onSelectionChange={handleSelectionChange}
             loading={isFetching}
           >
-            {rowProducts.map((product, index) => (
-              <ProductRow
-                key={product._rowId}
-                product={product}
-                rowId={product._rowId}
-                index={index}
-                selected={selectedResources.includes(product._rowId)}
-                actionButton={
-                  <Button
-                    size="slim"
-                    tone="critical"
-                    variant="plain"
-                    loading={removeMutation.isPending}
-                    onClick={() => removeMutation.mutate([product.aoa_sku])}
-                  >
+            {(() => {
+              let pos = 0;
+              return groupBySkuWithTiers(rowProducts).map((group) => {
+                const key = group[0]._rowId;
+                const removeBtn = (
+                  <Button size="slim" tone="critical" variant="plain" loading={removeMutation.isPending}
+                    onClick={() => removeMutation.mutate([group[0].aoa_sku])}>
                     Remove
                   </Button>
+                );
+                if (group.length === 1) {
+                  const el = (
+                    <ProductRow key={key} product={group[0]} rowId={key} index={pos}
+                      selected={selectedResources.includes(key)} actionButton={removeBtn} />
+                  );
+                  pos += 1;
+                  return el;
                 }
-              />
-            ))}
+                const expanded = expandedSkus.has(group[0].aoa_sku);
+                const el = (
+                  <ProductGroupRows key={key} group={group} startIndex={pos}
+                    selectedResources={selectedResources} isExpanded={expanded}
+                    onToggle={() => toggleExpand(group[0].aoa_sku)} actionButton={removeBtn} />
+                );
+                pos += expanded ? 1 + group.length : 1;
+                return el;
+              });
+            })()}
           </IndexTable>
         )}
       </Card>
@@ -768,7 +915,6 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const products = data?.items ?? data?.products ?? [];
   const pages    = data?.pages ?? 1;
 
-  type RowProduct = CatalogProduct & { _rowId: string; [key: string]: unknown };
   const rowProducts: RowProduct[] = products.map((p, i) => ({
     ...p,
     _rowId: `avail-${(page - 1) * PAGE_SIZE + i}`,
@@ -777,9 +923,19 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const { selectedResources, allResourcesSelected, handleSelectionChange } =
     useIndexResourceState(rowProducts, { resourceIDResolver: (p) => p._rowId });
 
+  const [expandedSkus, setExpandedSkus] = useState<Set<string>>(new Set());
+  const toggleExpand = useCallback((sku: string) => {
+    setExpandedSkus((prev) => {
+      const next = new Set(prev);
+      if (next.has(sku)) next.delete(sku); else next.add(sku);
+      return next;
+    });
+  }, []);
+
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     (handleSelectionChange as (t: string, s: boolean) => void)('all', false);
+    setExpandedSkus(new Set());
   }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter,
       dMinCost, dMaxCost, dMinList, dMaxList, minMargin, inStockOnly, sortBy, sortDir]);
 
@@ -816,9 +972,11 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
   const brandOptions    = toSelectOptions(summary?.brands     ?? [], 'All brands');
 
-  const selectedSkus = selectedResources
-    .map((rowId) => rowProducts.find((p) => p._rowId === rowId)?.aoa_sku)
-    .filter((sku): sku is string => sku !== undefined);
+  const selectedSkus = [...new Set(
+    selectedResources
+      .map((rowId) => rowProducts.find((p) => p._rowId === rowId)?.aoa_sku)
+      .filter((sku): sku is string => sku !== undefined)
+  )];
 
   const headings = [
     { title: 'Product' }, { title: 'Type' }, { title: 'Category' }, { title: 'Brand' },
@@ -951,26 +1109,34 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
             onSelectionChange={handleSelectionChange}
             loading={isFetching}
           >
-            {rowProducts.map((product, index) => (
-              <ProductRow
-                key={product._rowId}
-                product={product}
-                rowId={product._rowId}
-                index={index}
-                selected={selectedResources.includes(product._rowId)}
-                actionButton={
-                  <Button
-                    size="slim"
-                    variant="primary"
-                    disabled={atLimit}
-                    loading={pushMutation.isPending}
-                    onClick={() => { setPushError(null); pushMutation.mutate([product.aoa_sku]); }}
-                  >
+            {(() => {
+              let pos = 0;
+              return groupBySkuWithTiers(rowProducts).map((group) => {
+                const key = group[0]._rowId;
+                const addBtn = (
+                  <Button size="slim" variant="primary" disabled={atLimit} loading={pushMutation.isPending}
+                    onClick={() => { setPushError(null); pushMutation.mutate([group[0].aoa_sku]); }}>
                     Add to Shopify
                   </Button>
+                );
+                if (group.length === 1) {
+                  const el = (
+                    <ProductRow key={key} product={group[0]} rowId={key} index={pos}
+                      selected={selectedResources.includes(key)} actionButton={addBtn} />
+                  );
+                  pos += 1;
+                  return el;
                 }
-              />
-            ))}
+                const expanded = expandedSkus.has(group[0].aoa_sku);
+                const el = (
+                  <ProductGroupRows key={key} group={group} startIndex={pos}
+                    selectedResources={selectedResources} isExpanded={expanded}
+                    onToggle={() => toggleExpand(group[0].aoa_sku)} actionButton={addBtn} />
+                );
+                pos += expanded ? 1 + group.length : 1;
+                return el;
+              });
+            })()}
           </IndexTable>
         )}
       </Card>
