@@ -23,11 +23,12 @@ import {
   Button,
   Tabs,
   ProgressBar,
+  Checkbox,
 } from '@shopify/polaris';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { getCatalog, getCatalogSummary, pushCatalog, removeCatalog } from '@/lib/api/products';
 import { ApiError } from '@/lib/api/client';
-import type { CatalogProduct, CatalogSummary, PlanLimitExceededDetail } from '@/types/api';
+import type { CatalogProduct, CatalogSummary, CatalogParams, PlanLimitExceededDetail } from '@/types/api';
 
 const PAGE_SIZE = 25;
 
@@ -222,6 +223,173 @@ function FilterBar({
             </button>
           )}
         </InlineStack>
+      </BlockStack>
+    </Box>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Research filter panel (Available to Add tab only)
+// ---------------------------------------------------------------------------
+
+function ResearchFilterSection({
+  minCost, onMinCost,
+  maxCost, onMaxCost,
+  minListPrice, onMinListPrice,
+  maxListPrice, onMaxListPrice,
+  minMargin, onMinMargin,
+  inStockOnly, onInStockOnly,
+  sortBy, onSortBy,
+  sortDir, onSortDir,
+  activeCount,
+  onClear,
+}: {
+  minCost: string;      onMinCost: (v: string) => void;
+  maxCost: string;      onMaxCost: (v: string) => void;
+  minListPrice: string; onMinListPrice: (v: string) => void;
+  maxListPrice: string; onMaxListPrice: (v: string) => void;
+  minMargin: string;    onMinMargin: (v: string) => void;
+  inStockOnly: boolean; onInStockOnly: (v: boolean) => void;
+  sortBy: string;       onSortBy: (v: string) => void;
+  sortDir: 'asc' | 'desc'; onSortDir: (v: 'asc' | 'desc') => void;
+  activeCount: number;
+  onClear: () => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+
+  const marginOptions = [
+    { label: 'Any margin', value: ''   },
+    { label: '\u2265 10%',  value: '10' },
+    { label: '\u2265 20%',  value: '20' },
+    { label: '\u2265 30%',  value: '30' },
+    { label: '\u2265 40%',  value: '40' },
+    { label: '\u2265 50%',  value: '50' },
+  ];
+
+  const sortOptions = [
+    { label: 'Default order',     value: ''           },
+    { label: 'Margin %',          value: 'margin'     },
+    { label: 'List price',        value: 'list_price' },
+    { label: 'Cost',              value: 'aoa_cost'   },
+    { label: 'In-stock quantity', value: 'quantity'   },
+    { label: 'Name',              value: 'name'       },
+  ];
+
+  const linkBtn: React.CSSProperties = {
+    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+    color: 'var(--p-color-text-emphasis)', fontSize: '0.875rem',
+  };
+
+  return (
+    <Box paddingInline="400" paddingBlock="300">
+      <BlockStack gap="300">
+        {/* Header row — always visible */}
+        <InlineStack align="space-between" blockAlign="center" wrap>
+          <InlineStack gap="200" blockAlign="center">
+            <button style={linkBtn} onClick={() => setExpanded((e) => !e)}>
+              {expanded ? '\u25b2 Research filters' : '\u25bc Research filters'}
+            </button>
+            {activeCount > 0 && <Badge tone="info">{`${activeCount} active`}</Badge>}
+            {activeCount > 0 && (
+              <button style={{ ...linkBtn, textDecoration: 'underline' }} onClick={onClear}>
+                Clear
+              </button>
+            )}
+          </InlineStack>
+
+          <InlineStack gap="200" blockAlign="end">
+            <Box minWidth="175px">
+              <Select label="Sort by" options={sortOptions} value={sortBy} onChange={onSortBy} />
+            </Box>
+            {sortBy && (
+              <Button
+                variant="secondary"
+                size="slim"
+                onClick={() => onSortDir(sortDir === 'asc' ? 'desc' : 'asc')}
+              >
+                {sortDir === 'asc' ? '\u2191 Ascending' : '\u2193 Descending'}
+              </Button>
+            )}
+          </InlineStack>
+        </InlineStack>
+
+        {/* Collapsible price / margin / stock filters */}
+        {expanded && (
+          <Box background="bg-surface-secondary" padding="400">
+            <BlockStack gap="400">
+              <Text as="p" variant="bodySm" tone="subdued">
+                Filter by price and profitability to find products that fit your business goals.
+                Margin is estimated using your current markup settings.
+              </Text>
+              <InlineStack gap="600" blockAlign="end" wrap>
+                {/* AOA cost range */}
+                <BlockStack gap="150">
+                  <Text as="span" variant="bodySm" fontWeight="semibold">AOA cost</Text>
+                  <InlineStack gap="150" blockAlign="center">
+                    <Box minWidth="88px" maxWidth="88px">
+                      <TextField
+                        label="Min cost" labelHidden placeholder="$0"
+                        prefix="$" type="number" min={0}
+                        value={minCost} onChange={onMinCost} autoComplete="off"
+                      />
+                    </Box>
+                    <Text as="span" tone="subdued">–</Text>
+                    <Box minWidth="88px" maxWidth="88px">
+                      <TextField
+                        label="Max cost" labelHidden placeholder="any"
+                        prefix="$" type="number" min={0}
+                        value={maxCost} onChange={onMaxCost} autoComplete="off"
+                      />
+                    </Box>
+                  </InlineStack>
+                </BlockStack>
+
+                {/* List price range */}
+                <BlockStack gap="150">
+                  <Text as="span" variant="bodySm" fontWeight="semibold">List price</Text>
+                  <InlineStack gap="150" blockAlign="center">
+                    <Box minWidth="88px" maxWidth="88px">
+                      <TextField
+                        label="Min list price" labelHidden placeholder="$0"
+                        prefix="$" type="number" min={0}
+                        value={minListPrice} onChange={onMinListPrice} autoComplete="off"
+                      />
+                    </Box>
+                    <Text as="span" tone="subdued">–</Text>
+                    <Box minWidth="88px" maxWidth="88px">
+                      <TextField
+                        label="Max list price" labelHidden placeholder="any"
+                        prefix="$" type="number" min={0}
+                        value={maxListPrice} onChange={onMaxListPrice} autoComplete="off"
+                      />
+                    </Box>
+                  </InlineStack>
+                </BlockStack>
+
+                {/* Min margin preset */}
+                <Box minWidth="145px">
+                  <Select
+                    label="Min. margin"
+                    helpText="Est. gross margin"
+                    options={marginOptions}
+                    value={minMargin}
+                    onChange={onMinMargin}
+                  />
+                </Box>
+
+                {/* In stock only */}
+                <Box paddingBlockStart="500">
+                  <Checkbox
+                    label="In stock only"
+                    helpText="Qty > 0"
+                    checked={inStockOnly}
+                    onChange={onInStockOnly}
+                  />
+                </Box>
+              </InlineStack>
+            </BlockStack>
+          </Box>
+        )}
       </BlockStack>
     </Box>
   );
@@ -521,28 +689,77 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const [brandFilter, setBrandFilter] = useState('');
   const [pushError, setPushError] = useState<string | null>(null);
 
+  // Research filters
+  const [minCost, setMinCost] = useState('');
+  const [maxCost, setMaxCost] = useState('');
+  const [minListPrice, setMinListPrice] = useState('');
+  const [maxListPrice, setMaxListPrice] = useState('');
+  const [minMargin, setMinMargin] = useState('');
+  const [inStockOnly, setInStockOnly] = useState(false);
+  const [sortBy, setSortBy] = useState('');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
+
+  // Debounced price fields (600ms — longer than search to avoid rapid calls while typing)
+  const [dMinCost, setDMinCost] = useState('');
+  const [dMaxCost, setDMaxCost] = useState('');
+  const [dMinList, setDMinList] = useState('');
+  const [dMaxList, setDMaxList] = useState('');
+
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(searchValue); setPage(1); }, 400);
     return () => clearTimeout(t);
   }, [searchValue]);
 
-  const handleSupplier = useCallback((v: string) => { setSupplierFilter(v); setPage(1); }, []);
-  const handleCategory = useCallback((v: string) => { setCategoryFilter(v); setPage(1); }, []);
-  const handleBrand    = useCallback((v: string) => { setBrandFilter(v);    setPage(1); }, []);
-  const clearFilters   = () => {
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDMinCost(minCost); setDMaxCost(maxCost);
+      setDMinList(minListPrice); setDMaxList(maxListPrice);
+      setPage(1);
+    }, 600);
+    return () => clearTimeout(t);
+  }, [minCost, maxCost, minListPrice, maxListPrice]);
+
+  const handleSupplier  = useCallback((v: string)       => { setSupplierFilter(v); setPage(1); }, []);
+  const handleCategory  = useCallback((v: string)       => { setCategoryFilter(v); setPage(1); }, []);
+  const handleBrand     = useCallback((v: string)       => { setBrandFilter(v);    setPage(1); }, []);
+  const handleMinMargin = useCallback((v: string)       => { setMinMargin(v);      setPage(1); }, []);
+  const handleInStock   = useCallback((v: boolean)      => { setInStockOnly(v);   setPage(1); }, []);
+  const handleSortBy    = useCallback((v: string)       => { setSortBy(v);         setPage(1); }, []);
+  const handleSortDir   = useCallback((v: 'asc'|'desc') => setSortDir(v), []);
+
+  const clearFilters = () => {
     setSearchValue(''); setDebouncedSearch('');
     setSupplierFilter(''); setCategoryFilter(''); setBrandFilter('');
     setPage(1);
   };
 
+  const clearResearchFilters = () => {
+    setMinCost(''); setMaxCost(''); setDMinCost(''); setDMaxCost('');
+    setMinListPrice(''); setMaxListPrice(''); setDMinList(''); setDMaxList('');
+    setMinMargin(''); setInStockOnly(false);
+    setPage(1);
+  };
+
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
-    queryKey: ['catalog', 'available', page, debouncedSearch, supplierFilter, categoryFilter, brandFilter],
+    queryKey: [
+      'catalog', 'available', page,
+      debouncedSearch, supplierFilter, categoryFilter, brandFilter,
+      dMinCost, dMaxCost, dMinList, dMaxList, minMargin, inStockOnly, sortBy, sortDir,
+    ],
     queryFn: () => getCatalog({
       status: 'available', page, page_size: PAGE_SIZE,
-      search:   debouncedSearch || undefined,
-      supplier: supplierFilter  || undefined,
-      category: categoryFilter  || undefined,
-      brand:    brandFilter     || undefined,
+      search:         debouncedSearch || undefined,
+      supplier:       supplierFilter  || undefined,
+      category:       categoryFilter  || undefined,
+      brand:          brandFilter     || undefined,
+      min_cost:       dMinCost        ? parseFloat(dMinCost)     : undefined,
+      max_cost:       dMaxCost        ? parseFloat(dMaxCost)     : undefined,
+      min_list_price: dMinList        ? parseFloat(dMinList)     : undefined,
+      max_list_price: dMaxList        ? parseFloat(dMaxList)     : undefined,
+      min_margin:     minMargin       ? parseInt(minMargin, 10)  : undefined,
+      in_stock_only:  inStockOnly     || undefined,
+      sort_by:        (sortBy as CatalogParams['sort_by']) || undefined,
+      sort_dir:       sortBy          ? sortDir : undefined,
     }),
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -563,7 +780,8 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
     (handleSelectionChange as (t: string, s: boolean) => void)('all', false);
-  }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter]);
+  }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter,
+      dMinCost, dMaxCost, dMinList, dMaxList, minMargin, inStockOnly, sortBy, sortDir]);
 
   const pushMutation = useMutation({
     mutationFn: (skus: string[]) => pushCatalog({ skus }),
@@ -590,7 +808,11 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
     },
   });
 
-  const hasFilters = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
+  const hasBasicFilters    = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
+  const researchActiveCount = [dMinCost, dMaxCost, dMinList, dMaxList, minMargin]
+    .filter(Boolean).length + (inStockOnly ? 1 : 0);
+  const hasFilters = hasBasicFilters || researchActiveCount > 0 || Boolean(sortBy);
+
   const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
   const brandOptions    = toSelectOptions(summary?.brands     ?? [], 'All brands');
 
@@ -644,7 +866,7 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
           tone="success"
           onDismiss={() => pushMutation.reset()}
         >
-          <Text as="p">{`${pushMutation.data.slots_remaining ?? '—'} slots remaining.`}</Text>
+          <Text as="p">{`${pushMutation.data.slots_remaining ?? '\u2014'} slots remaining.`}</Text>
         </Banner>
       )}
 
@@ -670,8 +892,23 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
           onBrandChange={handleBrand}
           categoryOptions={categoryOptions}
           brandOptions={brandOptions}
-          hasFilters={hasFilters}
+          hasFilters={hasBasicFilters}
           onClear={clearFilters}
+        />
+
+        <Divider />
+
+        <ResearchFilterSection
+          minCost={minCost}           onMinCost={setMinCost}
+          maxCost={maxCost}           onMaxCost={setMaxCost}
+          minListPrice={minListPrice} onMinListPrice={setMinListPrice}
+          maxListPrice={maxListPrice} onMaxListPrice={setMaxListPrice}
+          minMargin={minMargin}       onMinMargin={handleMinMargin}
+          inStockOnly={inStockOnly}   onInStockOnly={handleInStock}
+          sortBy={sortBy}             onSortBy={handleSortBy}
+          sortDir={sortDir}           onSortDir={handleSortDir}
+          activeCount={researchActiveCount}
+          onClear={clearResearchFilters}
         />
 
         {selectedResources.length > 0 && !atLimit && (

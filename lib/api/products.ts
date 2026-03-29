@@ -49,6 +49,15 @@ export async function getCatalog(
   if (params?.category)          query.set('category',  params.category);
   if (params?.brand)             query.set('brand',     params.brand);
 
+  if (params?.min_cost       != null) query.set('min_cost',       String(params.min_cost));
+  if (params?.max_cost       != null) query.set('max_cost',       String(params.max_cost));
+  if (params?.min_list_price != null) query.set('min_list_price', String(params.min_list_price));
+  if (params?.max_list_price != null) query.set('max_list_price', String(params.max_list_price));
+  if (params?.min_margin     != null) query.set('min_margin',     String(params.min_margin));
+  if (params?.in_stock_only)          query.set('in_stock_only',  'true');
+  if (params?.sort_by)                query.set('sort_by',        params.sort_by);
+  if (params?.sort_dir)               query.set('sort_dir',       params.sort_dir);
+
   const qs = query.toString();
   return apiFetch<CatalogResponse>(`/store/catalog${qs ? `?${qs}` : ''}`);
 }

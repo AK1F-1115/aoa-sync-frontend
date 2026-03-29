@@ -295,6 +295,23 @@ export interface CatalogParams {
   supplier?: string;
   category?: string;
   brand?: string;
+  // --- Research filters (Available to Add tab) ---
+  /** Minimum AOA cost in USD */
+  min_cost?: number;
+  /** Maximum AOA cost in USD */
+  max_cost?: number;
+  /** Minimum Shopify list price in USD */
+  min_list_price?: number;
+  /** Maximum Shopify list price in USD */
+  max_list_price?: number;
+  /** Minimum estimated gross margin percentage (e.g. 30 = "at least 30%") */
+  min_margin?: number;
+  /** Only return products with last_synced_quantity > 0 */
+  in_stock_only?: boolean;
+  /** Field to sort results by */
+  sort_by?: 'name' | 'aoa_cost' | 'list_price' | 'margin' | 'quantity';
+  /** Sort direction — defaults to 'asc' */
+  sort_dir?: 'asc' | 'desc';
 }
 
 /** Top-level aggregate from GET /store/catalog/summary */
