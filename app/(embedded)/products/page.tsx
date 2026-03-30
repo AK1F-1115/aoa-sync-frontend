@@ -583,9 +583,11 @@ function ProductRow({
       <IndexTable.Cell>
         <BlockStack gap="050">
           {detailUrl ? (
-            <Link url={detailUrl} removeUnderline>
-              <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
-            </Link>
+            <span onClick={(e) => e.stopPropagation()}>
+              <Link url={detailUrl} removeUnderline>
+                <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
+              </Link>
+            </span>
           ) : (
             <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
           )}
@@ -683,9 +685,11 @@ function ProductGroupRows({
         <IndexTable.Cell>
           <BlockStack gap="050">
             {detailUrl ? (
-              <Link url={detailUrl} removeUnderline>
-                <Text fontWeight="semibold" as="span">{first.product_name ?? '\u2014'}</Text>
-              </Link>
+              <span onClick={(e) => e.stopPropagation()}>
+                <Link url={detailUrl} removeUnderline>
+                  <Text fontWeight="semibold" as="span">{first.product_name ?? '\u2014'}</Text>
+                </Link>
+              </span>
             ) : (
               <Text fontWeight="semibold" as="span">{first.product_name ?? '\u2014'}</Text>
             )}
