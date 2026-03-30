@@ -418,7 +418,7 @@ export default function ProductDetailPage() {
         >
           <Text as="p">
             {is404
-              ? 'This product detail page is only available for products already in your Shopify catalog. Browse products in the Available to Add tab to push new products.'
+              ? 'This product could not be found in the AOA catalog. It may have been discontinued or the SKU is incorrect.'
               : (error as Error)?.message || 'An unexpected error occurred.'}
           </Text>
         </Banner>

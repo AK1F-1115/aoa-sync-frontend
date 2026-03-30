@@ -109,5 +109,5 @@ export async function removeCatalog(
  * Returns 404 if the SKU is not in the store's active catalog.
  */
 export async function getProductDetail(sku: string): Promise<ProductDetailResponse> {
-  return apiFetch<ProductDetailResponse>(`/store/catalog/${encodeURIComponent(sku)}`);
+  return apiFetch<ProductDetailResponse>(`/store/catalog/${encodeURIComponent(sku)}?include_pool=true`);
 }

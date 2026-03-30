@@ -318,9 +318,6 @@ function TagFilterCheckboxes({
 }) {
   return (
     <BlockStack gap="300">
-      <Text as="p" variant="bodySm" tone="subdued">
-        Tag filters are sent to the server — server-side filtering support is required for results to change.
-      </Text>
       {TAG_FILTER_GROUPS.map((group) => (
         <InlineStack key={group.label} gap="400" blockAlign="center" wrap>
           <Box minWidth="90px">
@@ -1332,7 +1329,8 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
                 if (group.length === 1) {
                   const el = (
                     <ProductRow key={key} product={group[0]} rowId={key} index={pos}
-                      selected={selectedResources.includes(key)} actionButton={addBtn} />
+                      selected={selectedResources.includes(key)} actionButton={addBtn}
+                      detailUrl={`/products/${encodeURIComponent(group[0].aoa_sku)}`} />
                   );
                   pos += 1;
                   return el;
@@ -1341,7 +1339,8 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
                 const el = (
                   <ProductGroupRows key={key} group={group} startIndex={pos}
                     selectedResources={selectedResources} isExpanded={expanded}
-                    onToggle={() => toggleExpand(group[0].aoa_sku)} actionButton={addBtn} />
+                    onToggle={() => toggleExpand(group[0].aoa_sku)} actionButton={addBtn}
+                    detailUrl={`/products/${encodeURIComponent(group[0].aoa_sku)}`} />
                 );
                 pos += expanded ? 1 + group.length : 1;
                 return el;
