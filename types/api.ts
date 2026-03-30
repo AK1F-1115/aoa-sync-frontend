@@ -453,9 +453,9 @@ export interface PlanLimitExceededDetail {
 }
 
 /** Request body for DELETE /store/catalog/remove */
-export interface RemoveCatalogRequest {
-  skus: string[];
-}
+export type RemoveCatalogRequest =
+  | { skus: string[]; remove_all?: never }
+  | { remove_all: true; skus?: never };
 
 /** Success response from DELETE /store/catalog/remove */
 export interface RemoveCatalogResponse {

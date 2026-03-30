@@ -25,11 +25,12 @@ import {
   ProgressBar,
   Checkbox,
   Link,
+  Modal,
 } from '@shopify/polaris';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { getCatalog, getCatalogSummary, pushCatalog, removeCatalog } from '@/lib/api/products';
 import { ApiError } from '@/lib/api/client';
-import type { CatalogProduct, CatalogSummary, CatalogParams, PlanLimitExceededDetail } from '@/types/api';
+import type { CatalogProduct, CatalogSummary, CatalogParams, PlanLimitExceededDetail, RemoveCatalogRequest } from '@/types/api';
 
 const PAGE_SIZE = 25;
 
@@ -317,23 +318,23 @@ function TagFilterCheckboxes({
   onToggle: (tag: string) => void;
 }) {
   return (
-    <BlockStack gap="300">
+    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem 1.5rem' }}>
       {TAG_FILTER_GROUPS.map((group) => (
-        <InlineStack key={group.label} gap="400" blockAlign="center" wrap>
-          <Box minWidth="90px">
-            <Text as="span" variant="bodySm" fontWeight="semibold" tone="subdued">{group.label}</Text>
-          </Box>
-          {group.items.map((item) => (
-            <Checkbox
-              key={item.value}
-              label={item.label}
-              checked={activeTags.includes(item.value)}
-              onChange={() => onToggle(item.value)}
-            />
-          ))}
-        </InlineStack>
+        <BlockStack key={group.label} gap="200">
+          <Text as="span" variant="bodySm" fontWeight="semibold" tone="subdued">{group.label}</Text>
+          <BlockStack gap="150">
+            {group.items.map((item) => (
+              <Checkbox
+                key={item.value}
+                label={item.label}
+                checked={activeTags.includes(item.value)}
+                onChange={() => onToggle(item.value)}
+              />
+            ))}
+          </BlockStack>
+        </BlockStack>
       ))}
-    </BlockStack>
+    </div>
   );
 }
 
@@ -471,7 +472,7 @@ function ResearchFilterSection({
                 Filter by price and profitability to find products that fit your business goals.
                 Margin is estimated using your current markup settings.
               </Text>
-              <InlineStack gap="600" blockAlign="end" wrap>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(205px, 1fr))', gap: '1rem 1.5rem', alignItems: 'end' }}>
                 {/* Merchant cost range */}
                 <BlockStack gap="150">
                   <Text as="span" variant="bodySm" fontWeight="semibold">Your cost</Text>
@@ -517,26 +518,22 @@ function ResearchFilterSection({
                 </BlockStack>
 
                 {/* Min margin preset */}
-                <Box minWidth="145px">
-                  <Select
-                    label="Min. margin"
-                    helpText="Est. gross margin"
-                    options={marginOptions}
-                    value={minMargin}
-                    onChange={onMinMargin}
-                  />
-                </Box>
+                <Select
+                  label="Min. margin"
+                  helpText="Est. gross margin"
+                  options={marginOptions}
+                  value={minMargin}
+                  onChange={onMinMargin}
+                />
 
                 {/* In stock only */}
-                <Box paddingBlockStart="500">
-                  <Checkbox
-                    label="In stock only"
-                    helpText="Qty > 0"
-                    checked={inStockOnly}
-                    onChange={onInStockOnly}
-                  />
-                </Box>
-              </InlineStack>
+                <Checkbox
+                  label="In stock only"
+                  helpText="Qty > 0"
+                  checked={inStockOnly}
+                  onChange={onInStockOnly}
+                />
+              </div>
               <Divider />
               {/* Tag filters */}
               <TagFilterCheckboxes activeTags={activeTags} onToggle={onToggleTag} />
@@ -790,6 +787,7 @@ function ActiveCatalogTab({
   const [categoryFilter, setCategoryFilter] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [tagFilters,  setTagFilters]  = useState<string[]>([]);
+  const [showRemoveAllModal, setShowRemoveAllModal] = useState(false);
 
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(searchValue); setPage(1); }, 400);
@@ -851,7 +849,7 @@ function ActiveCatalogTab({
   }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter, tagFilters]);
 
   const removeMutation = useMutation({
-    mutationFn: (skus: string[]) => removeCatalog({ skus }),
+    mutationFn: (req: RemoveCatalogRequest) => removeCatalog(req),
     onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['catalog'] }); },
   });
 
@@ -931,21 +929,28 @@ function ActiveCatalogTab({
           onClearAll={() => { setTagFilters([]); setPage(1); }}
         />
 
-        {selectedResources.length > 0 && (
-          <Box padding="400" paddingBlockStart="0">
-            <InlineStack gap="300" blockAlign="center">
-              <Text as="span" tone="subdued" variant="bodySm">{selectedResources.length} selected</Text>
-              <Button
-                tone="critical"
-                variant="plain"
-                loading={removeMutation.isPending}
-                onClick={() => removeMutation.mutate(selectedSkus)}
-              >
-                Remove from Shopify
+        <Box padding="400" paddingBlockStart="0">
+          <InlineStack align="space-between" blockAlign="center">
+            {selectedResources.length > 0 ? (
+              <InlineStack gap="300" blockAlign="center">
+                <Text as="span" tone="subdued" variant="bodySm">{selectedResources.length} selected</Text>
+                <Button
+                  tone="critical"
+                  variant="plain"
+                  loading={removeMutation.isPending}
+                  onClick={() => removeMutation.mutate({ skus: selectedSkus })}
+                >
+                  Remove from Shopify
+                </Button>
+              </InlineStack>
+            ) : <span />}
+            {data && data.total > 0 && (
+              <Button tone="critical" variant="plain" onClick={() => setShowRemoveAllModal(true)}>
+                Remove all ({data.total.toLocaleString()}) from Shopify…
               </Button>
-            </InlineStack>
-          </Box>
-        )}
+            )}
+          </InlineStack>
+        </Box>
 
         <Divider />
 
@@ -977,7 +982,7 @@ function ActiveCatalogTab({
                 const key = group[0]._rowId;
                 const removeBtn = (
                   <Button size="slim" tone="critical" variant="plain" loading={removeMutation.isPending}
-                    onClick={() => removeMutation.mutate([group[0].aoa_sku])}>
+                    onClick={() => removeMutation.mutate({ skus: [group[0].aoa_sku] })}>
                     Remove
                   </Button>
                 );
@@ -1017,6 +1022,28 @@ function ActiveCatalogTab({
           />
         </InlineStack>
       )}
+
+      <Modal
+        open={showRemoveAllModal}
+        onClose={() => setShowRemoveAllModal(false)}
+        title="Remove all products from Shopify?"
+        primaryAction={{
+          content: `Remove all${data?.total != null ? ` (${data.total.toLocaleString()})` : ''} products`,
+          onAction: () => {
+            setShowRemoveAllModal(false);
+            removeMutation.mutate({ remove_all: true });
+          },
+          destructive: true,
+          loading: removeMutation.isPending,
+        }}
+        secondaryActions={[{ content: 'Cancel', onAction: () => setShowRemoveAllModal(false) }]}
+      >
+        <Modal.Section>
+          <Text as="p">
+            {`This will remove ${data?.total != null ? `all ${data.total.toLocaleString()} products` : 'all products'} from your Shopify store. They will return to the Available to Add pool and can be re-pushed at any time.`}
+          </Text>
+        </Modal.Section>
+      </Modal>
     </BlockStack>
   );
 }
