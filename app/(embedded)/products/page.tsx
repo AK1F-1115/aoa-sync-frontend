@@ -304,37 +304,94 @@ const TAG_FILTER_GROUPS = [
   {
     label: 'Marketplace',
     items: [
-      { value: 'marketplace:no-amazon',  label: 'No Amazon'  },
-      { value: 'marketplace:prohibited', label: 'Restricted' },
+      { value: 'marketplace:no-amazon',       label: 'No Amazon'  },
+      { value: 'marketplace:prohibited',      label: 'Restricted' },
+      { value: 'marketplace:authorized-only', label: 'Auth only'  },
     ],
   },
 ];
 
+/** Human-readable descriptions shown in the collapsible tag legend. */
+const TAG_LEGEND: Record<string, string> = {
+  'new-arrival':                 'Recently added to the AOA catalog.',
+  'stock-status:preorder':       'Available for pre-order but not yet in stock — ships when inventory arrives.',
+  'stock-status:limited':        'Low inventory; availability may change without notice.',
+  'hazmat':                      'Classified as hazardous material — may require special carrier or packaging.',
+  'prop65':                      "Contains chemicals on California's Prop 65 list. Applies to ~80% of all products.",
+  'prop65:ca-restricted':        'Restricted for sale in California under Prop 65.',
+  'non-returnable':              'Cannot be returned once purchased.',
+  'marketplace:no-amazon':       'AOA or brand policy prohibits listing this product on Amazon.',
+  'marketplace:prohibited':      'General marketplace restriction — verify brand policy before listing.',
+  'marketplace:authorized-only': 'Only authorized resellers may list this product. Confirm brand authorization first.',
+};
+
 function TagFilterCheckboxes({
   activeTags,
   onToggle,
+  marketplaceClear,
+  onMarketplaceClear,
 }: {
   activeTags: string[];
   onToggle: (tag: string) => void;
+  marketplaceClear?: boolean;
+  onMarketplaceClear?: (v: boolean) => void;
 }) {
+  const [showLegend, setShowLegend] = useState(false);
+  const legendBtn: React.CSSProperties = {
+    background: 'none', border: 'none', cursor: 'pointer', padding: 0,
+    color: 'var(--p-color-text-subdued)', fontSize: '0.75rem', textDecoration: 'underline',
+  };
+  const allItems = TAG_FILTER_GROUPS.flatMap((g) => g.items);
   return (
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem 1.5rem' }}>
-      {TAG_FILTER_GROUPS.map((group) => (
-        <BlockStack key={group.label} gap="200">
-          <Text as="span" variant="bodySm" fontWeight="semibold" tone="subdued">{group.label}</Text>
-          <BlockStack gap="150">
-            {group.items.map((item) => (
-              <Checkbox
-                key={item.value}
-                label={item.label}
-                checked={activeTags.includes(item.value)}
-                onChange={() => onToggle(item.value)}
-              />
-            ))}
+    <BlockStack gap="300">
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '1rem 1.5rem' }}>
+        {TAG_FILTER_GROUPS.map((group) => (
+          <BlockStack key={group.label} gap="200">
+            <Text as="span" variant="bodySm" fontWeight="semibold" tone="subdued">{group.label}</Text>
+            <BlockStack gap="150">
+              {group.label === 'Marketplace' && onMarketplaceClear && (
+                <>
+                  <Checkbox
+                    label="No restrictions"
+                    checked={marketplaceClear ?? false}
+                    onChange={onMarketplaceClear}
+                  />
+                  <Divider />
+                </>
+              )}
+              {group.items.map((item) => (
+                <Checkbox
+                  key={item.value}
+                  label={item.label}
+                  checked={activeTags.includes(item.value)}
+                  onChange={() => onToggle(item.value)}
+                />
+              ))}
+            </BlockStack>
           </BlockStack>
-        </BlockStack>
-      ))}
-    </div>
+        ))}
+      </div>
+      <InlineStack blockAlign="center">
+        <button style={legendBtn} onClick={() => setShowLegend((s) => !s)}>
+          {showLegend ? '\u25b2 Hide tag descriptions' : '\u25bc What do these tags mean?'}
+        </button>
+      </InlineStack>
+      {showLegend && (
+        <Box background="bg-surface-secondary" padding="300" borderRadius="200">
+          <BlockStack gap="150">
+            {Object.entries(TAG_LEGEND).map(([tag, desc]) => {
+              const label = allItems.find((i) => i.value === tag)?.label ?? tag;
+              return (
+                <div key={tag} style={{ display: 'grid', gridTemplateColumns: '160px 1fr', gap: '0.5rem', alignItems: 'start' }}>
+                  <Text as="span" variant="bodySm" fontWeight="semibold">{label}</Text>
+                  <Text as="span" variant="bodySm" tone="subdued">{desc}</Text>
+                </div>
+              );
+            })}
+          </BlockStack>
+        </Box>
+      )}
+    </BlockStack>
   );
 }
 
@@ -343,16 +400,21 @@ function TagFilterSection({
   activeTags,
   onToggle,
   onClearAll,
+  marketplaceClear,
+  onMarketplaceClear,
 }: {
   activeTags: string[];
   onToggle: (tag: string) => void;
   onClearAll: () => void;
+  marketplaceClear?: boolean;
+  onMarketplaceClear?: (v: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const linkBtn: React.CSSProperties = {
     background: 'none', border: 'none', cursor: 'pointer', padding: 0,
     color: 'var(--p-color-text-emphasis)', fontSize: '0.875rem',
   };
+  const totalActive = activeTags.length + (marketplaceClear ? 1 : 0);
   return (
     <Box paddingInline="400" paddingBlock="300">
       <BlockStack gap="300">
@@ -360,8 +422,8 @@ function TagFilterSection({
           <button style={linkBtn} onClick={() => setExpanded((e) => !e)}>
             {expanded ? '\u25b2 Tag filters' : '\u25bc Tag filters'}
           </button>
-          {activeTags.length > 0 && <Badge tone="info">{`${activeTags.length} active`}</Badge>}
-          {activeTags.length > 0 && (
+          {totalActive > 0 && <Badge tone="info">{`${totalActive} active`}</Badge>}
+          {totalActive > 0 && (
             <button style={{ ...linkBtn, textDecoration: 'underline' }} onClick={onClearAll}>
               Clear
             </button>
@@ -369,7 +431,12 @@ function TagFilterSection({
         </InlineStack>
         {expanded && (
           <Box background="bg-surface-secondary" padding="400">
-            <TagFilterCheckboxes activeTags={activeTags} onToggle={onToggle} />
+            <TagFilterCheckboxes
+              activeTags={activeTags}
+              onToggle={onToggle}
+              marketplaceClear={marketplaceClear}
+              onMarketplaceClear={onMarketplaceClear}
+            />
           </Box>
         )}
       </BlockStack>
@@ -386,11 +453,14 @@ function ResearchFilterSection({
   maxCost, onMaxCost,
   minListPrice, onMinListPrice,
   maxListPrice, onMaxListPrice,
+  minQty, onMinQty,
+  maxQty, onMaxQty,
   minMargin, onMinMargin,
   inStockOnly, onInStockOnly,
   sortBy, onSortBy,
   sortDir, onSortDir,
   activeTags, onToggleTag,
+  marketplaceClear, onMarketplaceClear,
   activeCount,
   onClear,
 }: {
@@ -398,11 +468,14 @@ function ResearchFilterSection({
   maxCost: string;      onMaxCost: (v: string) => void;
   minListPrice: string; onMinListPrice: (v: string) => void;
   maxListPrice: string; onMaxListPrice: (v: string) => void;
+  minQty: string;       onMinQty: (v: string) => void;
+  maxQty: string;       onMaxQty: (v: string) => void;
   minMargin: string;    onMinMargin: (v: string) => void;
   inStockOnly: boolean; onInStockOnly: (v: boolean) => void;
   sortBy: string;       onSortBy: (v: string) => void;
   sortDir: 'asc' | 'desc'; onSortDir: (v: 'asc' | 'desc') => void;
   activeTags: string[];    onToggleTag: (tag: string) => void;
+  marketplaceClear: boolean; onMarketplaceClear: (v: boolean) => void;
   activeCount: number;
   onClear: () => void;
 }) {
@@ -472,7 +545,7 @@ function ResearchFilterSection({
                 Filter by price and profitability to find products that fit your business goals.
                 Margin is estimated using your current markup settings.
               </Text>
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(205px, 1fr))', gap: '1rem 1.5rem', alignItems: 'end' }}>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '1rem 1.5rem', alignItems: 'start' }}>
                 {/* Merchant cost range */}
                 <BlockStack gap="150">
                   <Text as="span" variant="bodySm" fontWeight="semibold">Your cost</Text>
@@ -517,26 +590,48 @@ function ResearchFilterSection({
                   </InlineStack>
                 </BlockStack>
 
-                {/* Min margin preset */}
-                <Select
-                  label="Min. margin"
-                  helpText="Est. gross margin"
-                  options={marginOptions}
-                  value={minMargin}
-                  onChange={onMinMargin}
-                />
+                {/* In-stock qty range */}
+                <BlockStack gap="150">
+                  <Text as="span" variant="bodySm" fontWeight="semibold">In-stock qty</Text>
+                  <InlineStack gap="150" blockAlign="center">
+                    <Box minWidth="88px" maxWidth="88px">
+                      <TextField
+                        label="Min qty" labelHidden placeholder="0"
+                        type="number" min={0}
+                        value={minQty} onChange={onMinQty} autoComplete="off"
+                      />
+                    </Box>
+                    <Text as="span" tone="subdued">–</Text>
+                    <Box minWidth="88px" maxWidth="88px">
+                      <TextField
+                        label="Max qty" labelHidden placeholder="any"
+                        type="number" min={0}
+                        value={maxQty} onChange={onMaxQty} autoComplete="off"
+                      />
+                    </Box>
+                  </InlineStack>
+                </BlockStack>
 
-                {/* In stock only */}
-                <Checkbox
-                  label="In stock only"
-                  helpText="Qty > 0"
-                  checked={inStockOnly}
-                  onChange={onInStockOnly}
-                />
+                {/* Min margin preset */}
+                <BlockStack gap="150">
+                  <Text as="span" variant="bodySm" fontWeight="semibold">Min. margin</Text>
+                  <Select label="Min. margin" labelHidden options={marginOptions} value={minMargin} onChange={onMinMargin} />
+                </BlockStack>
+
+                {/* In stock only — spacer keeps it vertically aligned with other columns */}
+                <BlockStack gap="150">
+                  <div style={{ height: '18px' }} />
+                  <Checkbox label="In stock only" checked={inStockOnly} onChange={onInStockOnly} />
+                </BlockStack>
               </div>
               <Divider />
               {/* Tag filters */}
-              <TagFilterCheckboxes activeTags={activeTags} onToggle={onToggleTag} />
+              <TagFilterCheckboxes
+                activeTags={activeTags}
+                onToggle={onToggleTag}
+                marketplaceClear={marketplaceClear}
+                onMarketplaceClear={onMarketplaceClear}
+              />
             </BlockStack>
           </Box>
         )}
@@ -787,6 +882,7 @@ function ActiveCatalogTab({
   const [categoryFilter, setCategoryFilter] = useState('');
   const [brandFilter, setBrandFilter] = useState('');
   const [tagFilters,  setTagFilters]  = useState<string[]>([]);
+  const [marketplaceClear, setMarketplaceClear] = useState(false);
   const [showRemoveAllModal, setShowRemoveAllModal] = useState(false);
 
   useEffect(() => {
@@ -804,19 +900,20 @@ function ActiveCatalogTab({
   const clearFilters = () => {
     setSearchValue(''); setDebouncedSearch('');
     setSupplierFilter(''); setCategoryFilter(''); setBrandFilter('');
-    setTagFilters([]);
+    setTagFilters([]); setMarketplaceClear(false);
     setPage(1);
   };
 
   const { data, isLoading, isFetching, isError, error, refetch } = useQuery({
-    queryKey: ['catalog', 'active', page, debouncedSearch, supplierFilter, categoryFilter, brandFilter, [...tagFilters].sort().join(',')],
+    queryKey: ['catalog', 'active', page, debouncedSearch, supplierFilter, categoryFilter, brandFilter, [...tagFilters].sort().join(','), marketplaceClear],
     queryFn: () => getCatalog({
       status: 'active', page, page_size: PAGE_SIZE,
-      search:   debouncedSearch || undefined,
-      supplier: supplierFilter  || undefined,
-      category: categoryFilter  || undefined,
-      brand:    brandFilter     || undefined,
-      tags:     tagFilters.length > 0 ? tagFilters : undefined,
+      search:            debouncedSearch || undefined,
+      supplier:          supplierFilter  || undefined,
+      category:          categoryFilter  || undefined,
+      brand:             brandFilter     || undefined,
+      tags:              tagFilters.length > 0 ? tagFilters : undefined,
+      marketplace_clear: marketplaceClear || undefined,
     }),
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -926,7 +1023,9 @@ function ActiveCatalogTab({
         <TagFilterSection
           activeTags={tagFilters}
           onToggle={handleToggleTag}
-          onClearAll={() => { setTagFilters([]); setPage(1); }}
+          onClearAll={() => { setTagFilters([]); setMarketplaceClear(false); setPage(1); }}
+          marketplaceClear={marketplaceClear}
+          onMarketplaceClear={(v) => { setMarketplaceClear(v); setPage(1); }}
         />
 
         <Box padding="400" paddingBlockStart="0">
@@ -1067,17 +1166,22 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const [maxCost, setMaxCost] = useState('');
   const [minListPrice, setMinListPrice] = useState('');
   const [maxListPrice, setMaxListPrice] = useState('');
+  const [minQty, setMinQty] = useState('');
+  const [maxQty, setMaxQty] = useState('');
   const [minMargin, setMinMargin] = useState('');
   const [inStockOnly, setInStockOnly] = useState(false);
   const [sortBy, setSortBy] = useState('');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
   const [tagFilters, setTagFilters] = useState<string[]>([]);
+  const [marketplaceClear, setMarketplaceClear] = useState(false);
 
-  // Debounced price fields (600ms — longer than search to avoid rapid calls while typing)
+  // Debounced price/qty fields (600ms — longer than search to avoid rapid calls while typing)
   const [dMinCost, setDMinCost] = useState('');
   const [dMaxCost, setDMaxCost] = useState('');
   const [dMinList, setDMinList] = useState('');
   const [dMaxList, setDMaxList] = useState('');
+  const [dMinQty, setDMinQty] = useState('');
+  const [dMaxQty, setDMaxQty] = useState('');
 
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(searchValue); setPage(1); }, 400);
@@ -1088,10 +1192,11 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
     const t = setTimeout(() => {
       setDMinCost(minCost); setDMaxCost(maxCost);
       setDMinList(minListPrice); setDMaxList(maxListPrice);
+      setDMinQty(minQty); setDMaxQty(maxQty);
       setPage(1);
     }, 600);
     return () => clearTimeout(t);
-  }, [minCost, maxCost, minListPrice, maxListPrice]);
+  }, [minCost, maxCost, minListPrice, maxListPrice, minQty, maxQty]);
 
   const handleSupplier  = useCallback((v: string)       => { setSupplierFilter(v); setPage(1); }, []);
   const handleCategory  = useCallback((v: string)       => { setCategoryFilter(v); setPage(1); }, []);
@@ -1114,7 +1219,8 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const clearResearchFilters = () => {
     setMinCost(''); setMaxCost(''); setDMinCost(''); setDMaxCost('');
     setMinListPrice(''); setMaxListPrice(''); setDMinList(''); setDMaxList('');
-    setMinMargin(''); setInStockOnly(false); setTagFilters([]);
+    setMinQty(''); setMaxQty(''); setDMinQty(''); setDMaxQty('');
+    setMinMargin(''); setInStockOnly(false); setTagFilters([]); setMarketplaceClear(false);
     setPage(1);
   };
 
@@ -1122,24 +1228,28 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
     queryKey: [
       'catalog', 'available', page,
       debouncedSearch, supplierFilter, categoryFilter, brandFilter,
-      dMinCost, dMaxCost, dMinList, dMaxList, minMargin, inStockOnly, sortBy, sortDir,
-      [...tagFilters].sort().join(','),
+      dMinCost, dMaxCost, dMinList, dMaxList, dMinQty, dMaxQty,
+      minMargin, inStockOnly, sortBy, sortDir,
+      [...tagFilters].sort().join(','), marketplaceClear,
     ],
     queryFn: () => getCatalog({
       status: 'available', page, page_size: PAGE_SIZE,
-      search:         debouncedSearch || undefined,
-      supplier:       supplierFilter  || undefined,
-      category:       categoryFilter  || undefined,
-      brand:          brandFilter     || undefined,
-      min_cost:       dMinCost        ? parseFloat(dMinCost)     : undefined,
-      max_cost:       dMaxCost        ? parseFloat(dMaxCost)     : undefined,
-      min_list_price: dMinList        ? parseFloat(dMinList)     : undefined,
-      max_list_price: dMaxList        ? parseFloat(dMaxList)     : undefined,
-      min_margin:     minMargin       ? parseInt(minMargin, 10)  : undefined,
-      in_stock_only:  inStockOnly     || undefined,
-      sort_by:        (sortBy as CatalogParams['sort_by']) || undefined,
-      sort_dir:       sortBy          ? sortDir : undefined,
-      tags:           tagFilters.length > 0 ? tagFilters : undefined,
+      search:            debouncedSearch || undefined,
+      supplier:          supplierFilter  || undefined,
+      category:          categoryFilter  || undefined,
+      brand:             brandFilter     || undefined,
+      min_cost:          dMinCost        ? parseFloat(dMinCost)    : undefined,
+      max_cost:          dMaxCost        ? parseFloat(dMaxCost)    : undefined,
+      min_list_price:    dMinList        ? parseFloat(dMinList)    : undefined,
+      max_list_price:    dMaxList        ? parseFloat(dMaxList)    : undefined,
+      min_qty:           dMinQty         ? parseInt(dMinQty, 10)   : undefined,
+      max_qty:           dMaxQty         ? parseInt(dMaxQty, 10)   : undefined,
+      min_margin:        minMargin       ? parseInt(minMargin, 10) : undefined,
+      in_stock_only:     inStockOnly     || undefined,
+      sort_by:           (sortBy as CatalogParams['sort_by']) || undefined,
+      sort_dir:          sortBy          ? sortDir : undefined,
+      tags:              tagFilters.length > 0 ? tagFilters : undefined,
+      marketplace_clear: marketplaceClear || undefined,
     }),
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -1170,7 +1280,8 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
     (handleSelectionChange as (t: string, s: boolean) => void)('all', false);
     setExpandedSkus(new Set());
   }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter,
-      dMinCost, dMaxCost, dMinList, dMaxList, minMargin, inStockOnly, sortBy, sortDir, tagFilters]);
+      dMinCost, dMaxCost, dMinList, dMaxList, dMinQty, dMaxQty,
+      minMargin, inStockOnly, sortBy, sortDir, tagFilters, marketplaceClear]);
 
   const pushMutation = useMutation({
     mutationFn: (skus: string[]) => pushCatalog({ skus }),
@@ -1198,8 +1309,8 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   });
 
   const hasBasicFilters    = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
-  const researchActiveCount = [dMinCost, dMaxCost, dMinList, dMaxList, minMargin]
-    .filter(Boolean).length + (inStockOnly ? 1 : 0) + tagFilters.length;
+  const researchActiveCount = [dMinCost, dMaxCost, dMinList, dMaxList, dMinQty, dMaxQty, minMargin]
+    .filter(Boolean).length + (inStockOnly ? 1 : 0) + (marketplaceClear ? 1 : 0) + tagFilters.length;
   const hasFilters = hasBasicFilters || researchActiveCount > 0 || Boolean(sortBy);
 
   const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
@@ -1294,11 +1405,15 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
           maxCost={maxCost}           onMaxCost={setMaxCost}
           minListPrice={minListPrice} onMinListPrice={setMinListPrice}
           maxListPrice={maxListPrice} onMaxListPrice={setMaxListPrice}
+          minQty={minQty}             onMinQty={setMinQty}
+          maxQty={maxQty}             onMaxQty={setMaxQty}
           minMargin={minMargin}       onMinMargin={handleMinMargin}
           inStockOnly={inStockOnly}   onInStockOnly={handleInStock}
           sortBy={sortBy}             onSortBy={handleSortBy}
           sortDir={sortDir}           onSortDir={handleSortDir}
           activeTags={tagFilters}     onToggleTag={handleToggleTag}
+          marketplaceClear={marketplaceClear}
+          onMarketplaceClear={(v) => { setMarketplaceClear(v); setPage(1); }}
           activeCount={researchActiveCount}
           onClear={clearResearchFilters}
         />

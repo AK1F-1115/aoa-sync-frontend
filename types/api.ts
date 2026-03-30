@@ -398,6 +398,12 @@ export interface CatalogParams {
    * Examples: 'hazmat', 'prop65', 'new-arrival', 'marketplace:no-amazon', 'stock-status:limited'
    */
   tags?: string[];
+  /** Minimum in-stock quantity (catalog_quantity >= min_qty) */
+  min_qty?: number;
+  /** Maximum in-stock quantity (catalog_quantity <= max_qty) */
+  max_qty?: number;
+  /** Exclude products that have any marketplace restriction tag */
+  marketplace_clear?: boolean;
 }
 
 /** Top-level aggregate from GET /store/catalog/summary */
