@@ -111,4 +111,3 @@ export async function removeCatalog(
 export async function getProductDetail(sku: string): Promise<ProductDetailResponse> {
   return apiFetch<ProductDetailResponse>(`/store/catalog/${encodeURIComponent(sku)}`);
 }
-}
