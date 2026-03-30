@@ -281,6 +281,74 @@ export interface CatalogProduct {
   tags: string[];
 }
 
+// ---------------------------------------------------------------------------
+// Product detail — GET /store/catalog/{sku}
+// ---------------------------------------------------------------------------
+
+/** One pricing/quantity tier from the detail endpoint */
+export interface ProductDetailVariant {
+  /** 1 = standard single unit, 2 = case/multi-unit break */
+  variant_tier: 1 | 2;
+  /** Merchant-facing cost for this tier; null if no plan assigned */
+  merchant_cost: string | null;
+  /** Shopify-facing list price for this tier */
+  list_price: string | null;
+  /** Current AOA stock quantity for this tier */
+  catalog_quantity: number | null;
+  /** UPC/barcode for this tier */
+  upc: string | null;
+}
+
+/** Full product detail from GET /store/catalog/{sku} (active products only) */
+export interface ProductDetailResponse {
+  // Identity
+  aoa_sku: string;
+  supplier_item_number: string | null;
+  upc: string | null;
+  product_type: 'retail' | 'vds' | null;
+  // Content
+  product_name: string | null;
+  description: string | null;
+  /** Currently always "text"; "html" reserved for future */
+  description_format: 'html' | 'text' | null;
+  brand: string | null;
+  manufacturer: string | null;
+  // Categories
+  category_1: string | null;
+  category_2: string | null;
+  category_3: string | null;
+  // Media — empty array [] if none, never null
+  images: { url: string; alt: string | null; position: number }[];
+  // Physical
+  weight_lbs: number | null;
+  length_in: number | null;
+  width_in: number | null;
+  height_in: number | null;
+  country_of_origin: string | null;
+  // Pricing (tier-1 summary)
+  merchant_cost: string | null;
+  list_price: string | null;
+  // Inventory
+  catalog_quantity: number | null;
+  last_synced_quantity: number | null;
+  // Pricing tiers — always at least 1 element
+  variants: ProductDetailVariant[];
+  // Shopify
+  in_shopify: boolean;
+  /** Full GID e.g. "gid://shopify/Product/123"; null if not yet pushed */
+  shopify_product_id: string | null;
+  last_shopify_status: string | null;
+  last_synced_at: string | null;
+  last_price_synced_at: string | null;
+  // Logistics
+  shipping_profile_key: string | null;
+  stocking_indicator: string | null;
+  /** Reserved — always null */
+  vds_lead_time_days: null;
+  // Tags
+  tags: string[];
+}
+
 /** Paginated response from GET /store/catalog */
 export interface CatalogResponse {
   /** How many SKU slots this store has used */

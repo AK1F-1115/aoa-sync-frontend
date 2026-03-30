@@ -24,6 +24,7 @@ import {
   Tabs,
   ProgressBar,
   Checkbox,
+  Link,
 } from '@shopify/polaris';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { getCatalog, getCatalogSummary, pushCatalog, removeCatalog } from '@/lib/api/products';
@@ -565,12 +566,15 @@ function ProductRow({
   index,
   selected,
   actionButton,
+  detailUrl,
 }: {
   product: CatalogProduct;
   rowId: string;
   index: number;
   selected: boolean;
   actionButton?: React.ReactNode;
+  /** When provided, the product name becomes a link to the detail page */
+  detailUrl?: string;
 }) {
   const status = product.last_shopify_status?.toUpperCase() ?? null;
 
@@ -578,7 +582,13 @@ function ProductRow({
     <IndexTable.Row id={rowId} key={rowId} position={index} selected={selected}>
       <IndexTable.Cell>
         <BlockStack gap="050">
-          <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
+          {detailUrl ? (
+            <Link url={detailUrl} removeUnderline>
+              <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
+            </Link>
+          ) : (
+            <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
+          )}
           <InlineStack gap="100" blockAlign="center">
             <Text tone="subdued" variant="bodySm" as="span">SKU: {product.aoa_sku}</Text>
             {product.variant_tier != null && product.variant_tier > 1 && (
@@ -607,6 +617,8 @@ function ProductRow({
           <Badge tone={status === 'ACTIVE' ? 'success' : undefined}>
             {status.charAt(0) + status.slice(1).toLowerCase()}
           </Badge>
+        ) : product.in_shopify ? (
+          <Badge tone="attention">In Shopify</Badge>
         ) : (
           <Badge tone="new">Not pushed</Badge>
         )}
@@ -644,6 +656,7 @@ function ProductGroupRows({
   isExpanded,
   onToggle,
   actionButton,
+  detailUrl,
 }: {
   group: RowProduct[];
   startIndex: number;
@@ -651,6 +664,8 @@ function ProductGroupRows({
   isExpanded: boolean;
   onToggle: () => void;
   actionButton?: React.ReactNode;
+  /** When provided, the product name becomes a link to the detail page */
+  detailUrl?: string;
 }) {
   const first = group[0];
   const count = group.length;
@@ -667,7 +682,13 @@ function ProductGroupRows({
       <IndexTable.Row id={first._rowId} position={startIndex} selected={selectedResources.includes(first._rowId)}>
         <IndexTable.Cell>
           <BlockStack gap="050">
-            <Text fontWeight="semibold" as="span">{first.product_name ?? '\u2014'}</Text>
+            {detailUrl ? (
+              <Link url={detailUrl} removeUnderline>
+                <Text fontWeight="semibold" as="span">{first.product_name ?? '\u2014'}</Text>
+              </Link>
+            ) : (
+              <Text fontWeight="semibold" as="span">{first.product_name ?? '\u2014'}</Text>
+            )}
             <InlineStack gap="100" blockAlign="center">
               <Text tone="subdued" variant="bodySm" as="span">SKU: {first.aoa_sku}</Text>
               <Badge tone="attention" size="small">{`${count} price tiers`}</Badge>
@@ -703,7 +724,11 @@ function ProductGroupRows({
             <Badge tone={status === 'ACTIVE' ? 'success' : undefined}>
               {status.charAt(0) + status.slice(1).toLowerCase()}
             </Badge>
-          ) : <Badge tone="new">Not pushed</Badge>}
+          ) : first.in_shopify ? (
+            <Badge tone="attention">In Shopify</Badge>
+          ) : (
+            <Badge tone="new">Not pushed</Badge>
+          )}
         </IndexTable.Cell>
         {actionButton && <IndexTable.Cell>{actionButton}</IndexTable.Cell>}
       </IndexTable.Row>
@@ -958,7 +983,8 @@ function ActiveCatalogTab({
                 if (group.length === 1) {
                   const el = (
                     <ProductRow key={key} product={group[0]} rowId={key} index={pos}
-                      selected={selectedResources.includes(key)} actionButton={removeBtn} />
+                      selected={selectedResources.includes(key)} actionButton={removeBtn}
+                      detailUrl={`/products/${encodeURIComponent(group[0].aoa_sku)}`} />
                   );
                   pos += 1;
                   return el;
@@ -967,7 +993,8 @@ function ActiveCatalogTab({
                 const el = (
                   <ProductGroupRows key={key} group={group} startIndex={pos}
                     selectedResources={selectedResources} isExpanded={expanded}
-                    onToggle={() => toggleExpand(group[0].aoa_sku)} actionButton={removeBtn} />
+                    onToggle={() => toggleExpand(group[0].aoa_sku)} actionButton={removeBtn}
+                    detailUrl={`/products/${encodeURIComponent(group[0].aoa_sku)}`} />
                 );
                 pos += expanded ? 1 + group.length : 1;
                 return el;

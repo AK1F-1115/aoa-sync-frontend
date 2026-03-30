@@ -6,6 +6,7 @@
  * Endpoints (all authenticated with session token):
  *   GET    /store/catalog/summary  — aggregate snapshot (counts, top categories/brands)
  *   GET    /store/catalog          — paginated, filterable product list
+ *   GET    /store/catalog/{sku}    — full product detail (active products only; 404 otherwise)
  *   POST   /store/catalog/push     — push SKUs from AOA pool into Shopify
  *   DELETE /store/catalog/remove   — remove SKUs from Shopify back to pool
  *
@@ -17,6 +18,7 @@ import type {
   CatalogResponse,
   CatalogParams,
   CatalogSummary,
+  ProductDetailResponse,
   PushCatalogRequest,
   PushCatalogResponse,
   RemoveCatalogRequest,
@@ -95,4 +97,18 @@ export async function removeCatalog(
     method: 'DELETE',
     body: JSON.stringify(request),
   });
+}
+
+/**
+ * Fetch full product detail for an active (pushed) SKU.
+ *
+ * Returns rich detail including images, description, physical specs,
+ * all pricing tiers, and Shopify sync status.
+ *
+ * Rate limited to 60 calls/minute.
+ * Returns 404 if the SKU is not in the store's active catalog.
+ */
+export async function getProductDetail(sku: string): Promise<ProductDetailResponse> {
+  return apiFetch<ProductDetailResponse>(`/store/catalog/${encodeURIComponent(sku)}`);
+}
 }
