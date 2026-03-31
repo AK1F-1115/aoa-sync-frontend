@@ -733,7 +733,7 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
             <InlineStack>
               <Button
                 variant="primary"
-                onClick={() => bootstrapMutation.mutate()}
+                onClick={() => bootstrapMutation.mutate(undefined)}
                 loading={bootstrapMutation.isPending}
                 disabled={bootstrapMutation.isPending}
               >

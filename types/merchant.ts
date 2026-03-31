@@ -5,6 +5,8 @@
  * These are designed to be extensible for future WorkOS user context.
  */
 
+import type { SubscriptionInfo } from '@/types/api';
+
 // ---------------------------------------------------------------------------
 // Shop / Store
 // ---------------------------------------------------------------------------
@@ -49,7 +51,7 @@ export interface SyncHealth {
 export interface DashboardData {
   shop: ShopInfo;
   syncHealth: SyncHealth;
-  subscription: import('./api').SubscriptionInfo;
+  subscription: SubscriptionInfo;
 }
 
 // ---------------------------------------------------------------------------

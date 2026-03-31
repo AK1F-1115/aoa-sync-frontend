@@ -151,6 +151,21 @@ export interface StoreSettingsResponse {
   markup_pct_wholesale: number;
   collections_bootstrapped: boolean;
   collections_count: number;
+  /** Number of category-based smart collections */
+  category_collections: number;
+  /** Number of brand-based smart collections */
+  brand_collections: number;
+  /**
+   * How collections are managed:
+   * - 'auto'   — backend creates/updates collections automatically
+   * - 'assign' — collections exist but product assignment is manual
+   * - 'off'    — collections are fully unmanaged
+   */
+  collection_mode: 'auto' | 'assign' | 'off';
+  /** Whether bootstrap also creates brand collections */
+  bootstrap_brands: boolean;
+  /** Minimum number of SKUs a brand must have to receive its own collection */
+  min_brand_products: number;
   /** Whether the backend should automatically manage shipping profiles */
   auto_shipping_profiles: boolean;
   /** true = profiles exist and all variants are assigned */
@@ -169,6 +184,12 @@ export interface StoreSettingsUpdateRequest {
   auto_shipping_profiles?: boolean;
   push_retail?: boolean;
   push_vds?: boolean;
+  /** Collection management mode — 'auto' | 'assign' | 'off' */
+  collection_mode?: 'auto' | 'assign' | 'off';
+  /** Whether bootstrap also creates brand collections */
+  bootstrap_brands?: boolean;
+  /** Minimum SKUs a brand needs to get a collection (≥ 1) */
+  min_brand_products?: number;
 }
 
 /** Response from PATCH /store/settings */
@@ -190,6 +211,17 @@ export interface StoreCollectionsResponse {
   category_collections: number;
   brand_collections: number;
   total: number;
+}
+
+/** Optional request body for POST /store/collections/bootstrap */
+export interface CollectionsBootstrapRequest {
+  /** When true, brand collections are also created/updated */
+  bootstrap_brands?: boolean;
+  /**
+   * Minimum SKUs a brand must have to receive a collection.
+   * Persisted to store settings so future background syncs use it.
+   */
+  min_brand_products?: number;
 }
 
 /** Response from POST /store/collections/bootstrap */
