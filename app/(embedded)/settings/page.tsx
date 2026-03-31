@@ -34,7 +34,7 @@ import {
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPlans, subscribeToPlan, cancelSubscription } from '@/lib/api/billing';
 import { getSettings, updateSettings } from '@/lib/api/settings';
-import { getCollections, bootstrapCollections } from '@/lib/api/collections';
+import { getCollections, bootstrapCollections, reconcileCollections } from '@/lib/api/collections';
 import { getShipping, bootstrapShipping } from '@/lib/api/shipping';
 import { useMerchantContext } from '@/hooks/useMerchantContext';
 import { STATIC_PLANS } from '@/lib/plans';
@@ -652,13 +652,6 @@ function MarkupTab() {
 function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
   const queryClient = useQueryClient();
 
-  const { data: collections, isLoading } = useQuery({
-    queryKey: ['collections'],
-    queryFn: getCollections,
-    staleTime: 60_000,
-    enabled: !isFreePlan,
-  });
-
   // Pull saved brand preferences from settings (cache is warm from Markup tab)
   const { data: settings } = useQuery({
     queryKey: ['settings'],
@@ -678,24 +671,40 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
     }
   }, [settings]);
 
+  // Reconcile runs once on mount — checks live Shopify state and removes stale
+  // DB entries for collections that were manually deleted in Shopify Admin.
+  const reconcileMutation = useMutation({
+    mutationFn: reconcileCollections,
+  });
+
+  useEffect(() => {
+    if (!isFreePlan) reconcileMutation.mutate();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isFreePlan]);
+
   const bootstrapMutation = useMutation({
     mutationFn: bootstrapCollections,
     onSuccess: () => {
-      void queryClient.invalidateQueries({ queryKey: ['collections'] });
+      // Re-reconcile after bootstrap so counts reflect reality
+      reconcileMutation.mutate();
       void queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
   });
+
+  // Use the most up-to-date counts: bootstrap result > reconcile result > nothing
+  const counts = bootstrapMutation.data ?? reconcileMutation.data ?? null;
+  const isBooted = counts?.collections_bootstrapped ?? false;
+  const staleMissing = reconcileMutation.data?.removed ?? 0;
+  const isLoading = reconcileMutation.isPending && !reconcileMutation.data;
 
   return (
     <Card>
       <BlockStack gap="400">
         <InlineStack align="space-between">
           <Text variant="headingMd" as="h2">Smart Collections</Text>
-          {!isFreePlan && !isLoading && collections && (
-            <Badge tone={collections.collections_bootstrapped ? 'success' : 'info'}>
-              {collections.collections_bootstrapped
-                ? `${collections.total} collections`
-                : 'Not set up'}
+          {!isFreePlan && !isLoading && counts && (
+            <Badge tone={isBooted ? 'success' : 'info'}>
+              {isBooted ? `${counts.total} collections` : 'Not set up'}
             </Badge>
           )}
         </InlineStack>
@@ -717,21 +726,32 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
         ) : (
           <BlockStack gap="400">
             {/* Current counts */}
-            {!isLoading && collections && (
+            {!isLoading && counts && (
               <BlockStack gap="200">
                 <InlineStack align="space-between">
                   <Text as="span" tone="subdued">Category collections</Text>
                   <Text as="span" fontWeight="medium">
-                    {collections.category_collections}
+                    {counts.category_collections}
                   </Text>
                 </InlineStack>
                 <InlineStack align="space-between">
                   <Text as="span" tone="subdued">Brand collections</Text>
                   <Text as="span" fontWeight="medium">
-                    {collections.brand_collections}
+                    {counts.brand_collections}
                   </Text>
                 </InlineStack>
               </BlockStack>
+            )}
+
+            {/* Stale collections warning */}
+            {staleMissing > 0 && !bootstrapMutation.isSuccess && (
+              <Banner title="Collections deleted in Shopify" tone="warning">
+                <Text as="p">
+                  {staleMissing} collection{staleMissing !== 1 ? 's were' : ' was'} deleted
+                  from your Shopify store. Click &ldquo;Rebuild collections&rdquo; below to
+                  recreate {staleMissing !== 1 ? 'them' : 'it'}.
+                </Text>
+              </Banner>
             )}
 
             <Divider />
@@ -741,7 +761,7 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
               <Text variant="headingSm" as="h3">Brand collections</Text>
               <Checkbox
                 label="Include brand collections"
-                helpText={`Creates one collection per brand. Only brands with at least the minimum number of SKUs will get a collection.`}
+                helpText="Creates one collection per brand. Only brands with at least the minimum number of SKUs will get a collection."
                 checked={bootstrapBrands}
                 onChange={setBootstrapBrands}
               />
@@ -799,8 +819,8 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
                 loading={bootstrapMutation.isPending}
                 disabled={bootstrapMutation.isPending}
               >
-                {collections?.collections_bootstrapped
-                  ? 'Rebuild collections'
+                {isBooted
+                  ? staleMissing > 0 ? 'Rebuild collections' : 'Rebuild collections'
                   : 'Set up collections'}
               </Button>
             </InlineStack>

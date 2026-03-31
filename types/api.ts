@@ -233,6 +233,23 @@ export interface CollectionsBootstrapResponse {
   total: number;
 }
 
+/** Response from POST /store/collections/reconcile */
+export interface CollectionsReconcileResponse {
+  ok: boolean;
+  /** Number of collections checked against Shopify */
+  checked: number;
+  /** Number of stale collections removed from the DB */
+  removed: number;
+  /** Collections still alive after reconciliation */
+  remaining: number;
+  /** Keys of the removed collections (e.g. "brand:avery", "OFFICE SUPPLIES") */
+  removed_keys: string[];
+  collections_bootstrapped: boolean;
+  category_collections: number;
+  brand_collections: number;
+  total: number;
+}
+
 // ---------------------------------------------------------------------------
 // Shipping Profiles
 // ---------------------------------------------------------------------------
