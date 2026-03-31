@@ -659,10 +659,30 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
     enabled: !isFreePlan,
   });
 
+  // Pull saved brand preferences from settings (cache is warm from Markup tab)
+  const { data: settings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings,
+    staleTime: 60_000,
+    enabled: !isFreePlan,
+  });
+
+  const [bootstrapBrands, setBootstrapBrands] = useState(false);
+  const [minBrandProducts, setMinBrandProducts] = useState('5');
+
+  // Initialise from saved settings once loaded
+  useEffect(() => {
+    if (settings) {
+      setBootstrapBrands(settings.bootstrap_brands ?? false);
+      setMinBrandProducts(String(settings.min_brand_products ?? 5));
+    }
+  }, [settings]);
+
   const bootstrapMutation = useMutation({
     mutationFn: bootstrapCollections,
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['collections'] });
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
     },
   });
 
@@ -681,9 +701,10 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
         </InlineStack>
         <Divider />
         <Text as="p" tone="subdued">
-          Automatically create one Shopify smart collection per product category
-          (e.g. &ldquo;Office Supplies&rdquo;, &ldquo;Furniture&rdquo;). Products are assigned by
-          Shopify&apos;s rules engine.
+          Automatically create Shopify smart collections for each product
+          category (e.g. &ldquo;Office Supplies&rdquo;, &ldquo;Furniture&rdquo;) and
+          optionally for brands. Products are assigned by Shopify&apos;s rules
+          engine — you can edit the rules at any time in Shopify Admin.
         </Text>
 
         {isFreePlan ? (
@@ -695,6 +716,7 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
           </Banner>
         ) : (
           <BlockStack gap="400">
+            {/* Current counts */}
             {!isLoading && collections && (
               <BlockStack gap="200">
                 <InlineStack align="space-between">
@@ -712,10 +734,40 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
               </BlockStack>
             )}
 
+            <Divider />
+
+            {/* Brand collections options */}
+            <BlockStack gap="300">
+              <Text variant="headingSm" as="h3">Brand collections</Text>
+              <Checkbox
+                label="Include brand collections"
+                helpText={`Creates one collection per brand. Only brands with at least the minimum number of SKUs will get a collection.`}
+                checked={bootstrapBrands}
+                onChange={setBootstrapBrands}
+              />
+              {bootstrapBrands && (
+                <Box maxWidth="200px">
+                  <TextField
+                    label="Min. products per brand"
+                    helpText="Brands with fewer SKUs are skipped."
+                    type="number"
+                    min={1}
+                    value={minBrandProducts}
+                    onChange={setMinBrandProducts}
+                    autoComplete="off"
+                  />
+                </Box>
+              )}
+            </BlockStack>
+
             {bootstrapMutation.isSuccess && (
               <Banner title="Collections created" tone="success">
                 <Text as="p">
-                  {bootstrapMutation.data.total} collections have been set up
+                  {bootstrapMutation.data.category_collections} category
+                  {bootstrapMutation.data.brand_collections > 0
+                    ? ` + ${bootstrapMutation.data.brand_collections} brand`
+                    : ''}{' '}
+                  ({bootstrapMutation.data.total} total) collections are set up
                   in your Shopify store.
                 </Text>
               </Banner>
@@ -733,7 +785,17 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
             <InlineStack>
               <Button
                 variant="primary"
-                onClick={() => bootstrapMutation.mutate(undefined)}
+                onClick={() =>
+                  bootstrapMutation.mutate(
+                    bootstrapBrands
+                      ? {
+                          bootstrap_brands: true,
+                          min_brand_products:
+                            parseInt(minBrandProducts, 10) || 5,
+                        }
+                      : undefined
+                  )
+                }
                 loading={bootstrapMutation.isPending}
                 disabled={bootstrapMutation.isPending}
               >
@@ -746,7 +808,7 @@ function CollectionsTab({ isFreePlan }: { isFreePlan: boolean }) {
             {bootstrapMutation.isPending && (
               <Text as="p" tone="subdued">
                 Setting up collections — this can take 30–120 seconds for large
-                catalogs. Please wait…
+                catalogs. Please wait&hellip;
               </Text>
             )}
           </BlockStack>
