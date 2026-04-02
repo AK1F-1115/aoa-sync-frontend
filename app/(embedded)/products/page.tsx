@@ -165,6 +165,9 @@ function SummaryBar({ summary, isLoading, isError, activeTotal }: {
   isError?: boolean;
   activeTotal?: number;
 }) {
+  // Debug: log on every render so we can see what's being received
+  console.log('[AOA] SummaryBar:', { summary, isLoading, isError, activeTotal });
+
   if (isLoading && !summary) {
     return (
       <Card>
@@ -905,7 +908,7 @@ function ProductRow({
               {status.charAt(0) + status.slice(1).toLowerCase()}
             </Badge>
           ) : product.in_shopify ? (
-            <Badge tone="attention">In Shopify</Badge>
+            <Badge tone="success">In Shopify</Badge>
           ) : (
             <Badge tone="new">Not pushed</Badge>
           )}
@@ -1075,7 +1078,7 @@ function ProductGroupRows({
               {status.charAt(0) + status.slice(1).toLowerCase()}
             </Badge>
           ) : first.in_shopify ? (
-            <Badge tone="attention">In Shopify</Badge>
+            <Badge tone="success">In Shopify</Badge>
           ) : (
             <Badge tone="new">Not pushed</Badge>
           )}
@@ -1257,7 +1260,8 @@ function ActiveCatalogTab({
         </Banner>
       )}
 
-      <SummaryBar summary={summary} isLoading={summaryLoading} isError={summaryError} activeTotal={activeTotal} />
+      {/* data.total is the most reliable source — it's loaded when products are visible */}
+      <SummaryBar summary={summary} isLoading={summaryLoading} isError={summaryError} activeTotal={data?.total ?? activeTotal} />
 
       {data && (
         <SlotCounter
