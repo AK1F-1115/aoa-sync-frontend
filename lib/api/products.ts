@@ -13,7 +13,8 @@
  * Multi-tenant safe: backend always filters by store_id from the session token.
  */
 
-import { apiFetch } from '@/lib/api/client';
+import { apiFetch, ApiError } from '@/lib/api/client';
+import { getSessionToken } from '@/lib/shopify/appBridge';
 import type {
   CatalogResponse,
   CatalogParams,
@@ -29,10 +30,32 @@ import type {
 
 /**
  * Fetch the instant aggregate snapshot for this store's catalog.
- * Fast — no pagination, returns pre-aggregated counts and top-15 lists.
+ *
+ * Routes through the Next.js server-side proxy (/api/catalog-summary)
+ * to avoid a CORS issue on the backend — the /store/catalog/summary
+ * endpoint is missing Access-Control-Allow-Origin on the backend.
+ * The proxy forwards the Shopify JWT to the backend unchanged.
  */
 export async function getCatalogSummary(): Promise<CatalogSummary> {
-  return apiFetch<CatalogSummary>('/store/catalog/summary');
+  const token = await getSessionToken();
+
+  const res = await fetch('/api/catalog-summary', {
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${token}`,
+    },
+  });
+
+  if (!res.ok) {
+    let message = `Request failed: ${res.status} ${res.statusText}`;
+    try {
+      const body = (await res.json()) as { detail?: string };
+      if (typeof body.detail === 'string') message = body.detail;
+    } catch { /* ignore */ }
+    throw new ApiError(res.status, message);
+  }
+
+  return res.json() as Promise<CatalogSummary>;
 }
 
 /**
