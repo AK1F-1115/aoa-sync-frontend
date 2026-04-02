@@ -878,7 +878,7 @@ function ProductRow({
         <IndexTable.Cell><Text as="span">{(product.catalog_quantity ?? product.last_synced_quantity) != null ? (product.catalog_quantity ?? product.last_synced_quantity)!.toLocaleString() : '—'}</Text></IndexTable.Cell>
         <IndexTable.Cell>
           {status && status !== 'UNKNOWN' ? (
-            <Badge tone={status === 'ACTIVE' ? 'success' : undefined}>
+            <Badge tone={status === 'ACTIVE' ? 'success' : status === 'DRAFT' ? 'attention' : undefined}>
               {status.charAt(0) + status.slice(1).toLowerCase()}
             </Badge>
           ) : product.in_shopify ? (
@@ -1045,10 +1045,10 @@ function ProductGroupRows({
             </BlockStack>
           </IndexTable.Cell>
         )}
-        <IndexTable.Cell><Text as="span">{first.catalog_quantity ?? '\u2014'}</Text></IndexTable.Cell>
+        <IndexTable.Cell><Text as="span">{(first.catalog_quantity ?? first.last_synced_quantity) != null ? (first.catalog_quantity ?? first.last_synced_quantity)!.toLocaleString() : '\u2014'}</Text></IndexTable.Cell>
         <IndexTable.Cell>
-          {status ? (
-            <Badge tone={status === 'ACTIVE' ? 'success' : undefined}>
+          {status && status !== 'UNKNOWN' ? (
+            <Badge tone={status === 'ACTIVE' ? 'success' : status === 'DRAFT' ? 'attention' : undefined}>
               {status.charAt(0) + status.slice(1).toLowerCase()}
             </Badge>
           ) : first.in_shopify ? (

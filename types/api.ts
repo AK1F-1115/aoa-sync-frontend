@@ -319,7 +319,7 @@ export interface CatalogProduct {
    * This is what powers in_stock_only filtering and the Qty column display.
    */
   catalog_quantity: number | null;
-  /** "ACTIVE" | "DRAFT" | null */
+  /** "active" | "draft" | "archived" | null — lowercased from Shopify */
   last_shopify_status: string | null;
   /** "warehouse" | "dropship" | null */
   shipping_profile_key: string | null;
