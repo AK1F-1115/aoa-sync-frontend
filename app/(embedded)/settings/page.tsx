@@ -502,7 +502,7 @@ function MarkupTab() {
   });
 
   const handleAutoPricingToggle = () => {
-    const current = settings?.use_auto_pricing ?? true;
+    const current = settings?.use_auto_pricing ?? false;
     const next = !current;
     updateMutation.mutate({ use_auto_pricing: next });
     setAutoPricingBanner(next ? 'enabled' : 'disabled');
@@ -521,7 +521,7 @@ function MarkupTab() {
     );
   }
 
-  const useAutoPricing = settings?.use_auto_pricing ?? true;
+  const useAutoPricing = settings?.use_auto_pricing ?? false;
 
   const priceSyncQueued =
     updateMutation.isSuccess && updateMutation.data?.price_sync === 'queued';
