@@ -854,7 +854,11 @@ function ProductRow({
           <IndexTable.Cell>
             <BlockStack gap="050">
               <Text as="span" fontWeight="semibold">
-                {formatPrice(product.your_price ?? product.list_price)}
+                {product.your_price
+                  ? formatPrice(product.your_price)
+                  : showEditPrice
+                    ? <Text as="span" tone="subdued">— Set price</Text>
+                    : formatPrice(product.list_price)}
               </Text>
               {showEditPrice && (
                 <span onClick={(e) => e.stopPropagation()}>
@@ -1018,7 +1022,13 @@ function ProductGroupRows({
           <IndexTable.Cell>
             <BlockStack gap="050">
               <Text as="span" fontWeight="semibold">
-                {isExpanded ? 'See tiers' : formatPrice(first.your_price ?? first.list_price)}
+                {isExpanded
+                  ? 'See tiers'
+                  : first.your_price
+                    ? formatPrice(first.your_price)
+                    : showEditPrice
+                      ? <Text as="span" tone="subdued">— Set price</Text>
+                      : formatPrice(first.list_price)}
               </Text>
               {showEditPrice && !isExpanded && (
                 <span onClick={(e) => e.stopPropagation()}>
