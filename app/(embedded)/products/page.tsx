@@ -170,10 +170,10 @@ function SummaryBar({ summary, isLoading }: { summary: CatalogSummary | undefine
   if (!summary) return null;
 
   const stats = [
-    { label: 'Total active',  value: (summary.total_active    ?? 0).toLocaleString() },
-    { label: 'Warehouse',     value: (summary.warehouse_count ?? 0).toLocaleString() },
-    { label: 'Dropship',      value: (summary.dropship_count  ?? 0).toLocaleString() },
-    { label: 'Last sync',     value: formatDateTime(summary.last_sync_at)            },
+    { label: 'Total active',  value: (summary.total_active ?? 0).toLocaleString() },
+    { label: 'Warehouse',     value: (summary.retail_count ?? 0).toLocaleString() },
+    { label: 'Dropship',      value: (summary.vds_count    ?? 0).toLocaleString() },
+    { label: 'Last sync',     value: formatDateTime(summary.last_sync_at)         },
   ];
 
   return (
