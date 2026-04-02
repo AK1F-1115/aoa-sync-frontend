@@ -240,21 +240,43 @@ function ProductInfoPanel({ product }: { product: ProductDetailResponse }) {
       <Divider />
 
       {/* Pricing row */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '0.5rem 1rem' }}>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr 1fr', gap: '0.5rem 1rem' }}>
         <LabelValue label="Your cost" value={formatPrice(product.merchant_cost)} highlight />
-        <LabelValue label="List price" value={formatPrice(product.list_price)} highlight />
-        <LabelValue label="Est. margin" value={estMargin(product.merchant_cost, product.list_price)} />
+        <LabelValue label="List price" value={formatPrice(product.list_price)} />
+        <LabelValue
+          label="Your price (Shopify)"
+          value={formatPrice(product.your_price ?? product.list_price)}
+          highlight
+          subText={
+            product.map_price
+              ? `MAP: ${formatPrice(product.map_price)}${product.below_map ? ' — below MAP' : ''}`
+              : undefined
+          }
+          warning={product.below_map}
+        />
+        <LabelValue label="Est. margin" value={estMargin(product.merchant_cost, product.your_price ?? product.list_price)} />
         <LabelValue label="In-stock qty" value={product.catalog_quantity != null ? product.catalog_quantity.toLocaleString() : '—'} />
       </div>
     </BlockStack>
   );
 }
 
-function LabelValue({ label, value, highlight }: { label: string; value: string; highlight?: boolean }) {
+function LabelValue({ label, value, highlight, subText, warning }: {
+  label: string;
+  value: string;
+  highlight?: boolean;
+  /** Secondary line shown below the value in subdued text */
+  subText?: string;
+  /** When true, renders subText in warning/critical tone */
+  warning?: boolean;
+}) {
   return (
     <BlockStack gap="050">
       <Text as="p" variant="bodySm" tone="subdued">{label}</Text>
       <Text as="p" fontWeight={highlight ? 'semibold' : 'regular'} variant={highlight ? 'bodyMd' : 'bodySm'}>{value}</Text>
+      {subText && (
+        <Text as="p" variant="bodySm" tone={warning ? 'critical' : 'subdued'}>{subText}</Text>
+      )}
     </BlockStack>
   );
 }

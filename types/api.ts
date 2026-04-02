@@ -406,6 +406,12 @@ export interface ProductDetailResponse {
   // Pricing (tier-1 summary)
   merchant_cost: string | null;
   list_price: string | null;
+  /** Merchant's actual Shopify price — markup-calculated in auto mode, manually set in manual mode */
+  your_price: string | null;
+  /** Manufacturer's minimum advertised price; null if not set */
+  map_price: string | null;
+  /** True when your_price is below map_price */
+  below_map: boolean;
   // Inventory
   catalog_quantity: number | null;
   last_synced_quantity: number | null;
