@@ -870,9 +870,9 @@ function ProductRow({
             </BlockStack>
           </IndexTable.Cell>
         )}
-        <IndexTable.Cell><Text as="span">{product.catalog_quantity ?? '—'}</Text></IndexTable.Cell>
+        <IndexTable.Cell><Text as="span">{(product.catalog_quantity ?? product.last_synced_quantity) != null ? (product.catalog_quantity ?? product.last_synced_quantity)!.toLocaleString() : '—'}</Text></IndexTable.Cell>
         <IndexTable.Cell>
-          {status ? (
+          {status && status !== 'UNKNOWN' ? (
             <Badge tone={status === 'ACTIVE' ? 'success' : undefined}>
               {status.charAt(0) + status.slice(1).toLowerCase()}
             </Badge>

@@ -383,7 +383,11 @@ function ShopifyStatusCard({ product, shopDomain }: { product: ProductDetailResp
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0.75rem 1.5rem' }}>
           <LabelValue
             label="Product status"
-            value={shopifyStatus ? shopifyStatus.charAt(0) + shopifyStatus.slice(1).toLowerCase() : 'Unknown'}
+            value={
+              shopifyStatus && shopifyStatus !== 'UNKNOWN'
+                ? shopifyStatus.charAt(0) + shopifyStatus.slice(1).toLowerCase()
+                : 'In Shopify'
+            }
           />
           <LabelValue label="Last synced" value={formatDateTime(product.last_synced_at)} />
           <LabelValue label="Last price sync" value={formatDateTime(product.last_price_synced_at)} />
