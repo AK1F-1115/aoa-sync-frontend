@@ -129,10 +129,18 @@ function LoadingSkeleton() {
 }
 
 /** Renders the product image gallery. Shows a placeholder if no images. */
-function ImageGallery({ images }: { images: ProductDetailResponse['images'] }) {
+function ImageGallery({ images, imageUrl }: { images: ProductDetailResponse['images']; imageUrl?: string | null }) {
   const [selected, setSelected] = useState(0);
 
-  if (images.length === 0) {
+  // Fall back to the single image_url when the full images array is empty
+  const resolvedImages: ProductDetailResponse['images'] =
+    images.length > 0
+      ? images
+      : imageUrl
+        ? [{ url: imageUrl, alt: null, position: 0 }]
+        : [];
+
+  if (resolvedImages.length === 0) {
     return (
       <Box
         background="bg-surface-secondary"
@@ -147,7 +155,7 @@ function ImageGallery({ images }: { images: ProductDetailResponse['images'] }) {
     );
   }
 
-  const primary = images[selected] ?? images[0];
+  const primary = resolvedImages[selected] ?? resolvedImages[0];
 
   return (
     <BlockStack gap="300">
@@ -162,9 +170,9 @@ function ImageGallery({ images }: { images: ProductDetailResponse['images'] }) {
       </Box>
 
       {/* Thumbnail strip — only if >1 image */}
-      {images.length > 1 && (
+      {resolvedImages.length > 1 && (
         <InlineStack gap="200" wrap>
-          {images.map((img, i) => (
+          {resolvedImages.map((img, i) => (
             <button
               key={i}
               onClick={() => setSelected(i)}
@@ -464,7 +472,7 @@ export default function ProductDetailPage() {
         {/* Hero: image + core info side by side */}
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 280px) 1fr', gap: '1.5rem', alignItems: 'start' }}>
-            <ImageGallery images={product.images} />
+            <ImageGallery images={product.images} imageUrl={product.image_url} />
             <ProductInfoPanel product={product} />
           </div>
         </Card>
