@@ -169,20 +169,25 @@ function SummaryBar({ summary, isLoading }: { summary: CatalogSummary | undefine
   }
   if (!summary) return null;
 
-  const stats = [
+  const stats: { label: string; value: string; sub?: string }[] = [
     { label: 'Total active',  value: (summary.total_active ?? 0).toLocaleString() },
     { label: 'Warehouse',     value: (summary.retail_count ?? 0).toLocaleString() },
-    { label: 'Dropship',      value: (summary.vds_count    ?? 0).toLocaleString() },
-    { label: 'Last sync',     value: formatDateTime(summary.last_sync_at)         },
+    {
+      label: 'Dropship',
+      value: (summary.vds_count ?? 0).toLocaleString(),
+      sub: `${(summary.vds_tier2_count ?? 0).toLocaleString()} with Tier 2`,
+    },
+    { label: 'Last sync',     value: formatDateTime(summary.last_sync_at) },
   ];
 
   return (
     <Card>
       <InlineStack gap="600" wrap>
-        {stats.map(({ label, value }) => (
+        {stats.map(({ label, value, sub }) => (
           <BlockStack gap="050" key={label}>
             <Text as="span" tone="subdued" variant="bodySm">{label}</Text>
             <Text as="span" fontWeight="semibold" variant="bodyMd">{value}</Text>
+            {sub && <Text as="span" tone="subdued" variant="bodySm">{sub}</Text>}
           </BlockStack>
         ))}
       </InlineStack>

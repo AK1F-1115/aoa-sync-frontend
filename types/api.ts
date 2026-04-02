@@ -500,6 +500,8 @@ export interface CatalogSummary {
   retail_count: number;
   /** Essendant VDS (dropship) variant count */
   vds_count: number;
+  /** VDS products that have a tier-2 (case/multi-unit) variant */
+  vds_tier2_count: number;
   /** Variants assigned to warehouse shipping profile */
   warehouse_count: number;
   /** Variants assigned to dropship shipping profile */
