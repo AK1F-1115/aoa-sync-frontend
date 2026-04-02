@@ -470,6 +470,7 @@ function MarkupTab() {
   const [vdsPct, setVdsPct] = useState('');
   const [wholesalePct, setWholesalePct] = useState('');
   const [formDirty, setFormDirty] = useState(false);
+  const [autoPricingBanner, setAutoPricingBanner] = useState<'enabled' | 'disabled' | null>(null);
 
   const {
     data: settings,
@@ -500,6 +501,13 @@ function MarkupTab() {
     },
   });
 
+  const handleAutoPricingToggle = () => {
+    const current = settings?.use_auto_pricing ?? true;
+    const next = !current;
+    updateMutation.mutate({ use_auto_pricing: next });
+    setAutoPricingBanner(next ? 'enabled' : 'disabled');
+  };
+
   if (isLoading) return <Card><SkeletonBodyText lines={6} /></Card>;
   if (isError) {
     return (
@@ -513,6 +521,8 @@ function MarkupTab() {
     );
   }
 
+  const useAutoPricing = settings?.use_auto_pricing ?? true;
+
   const priceSyncQueued =
     updateMutation.isSuccess && updateMutation.data?.price_sync === 'queued';
   const noChange =
@@ -520,6 +530,28 @@ function MarkupTab() {
 
   return (
     <BlockStack gap="400">
+      {autoPricingBanner === 'enabled' && (
+        <Banner title="Auto-pricing re-enabled" tone="success" onDismiss={() => setAutoPricingBanner(null)}>
+          <Text as="p">
+            Prices are syncing to Shopify now using your markup settings (~10 minutes).
+          </Text>
+        </Banner>
+      )}
+      {autoPricingBanner === 'disabled' && (
+        <Banner title="Manual pricing enabled" tone="info" onDismiss={() => setAutoPricingBanner(null)}>
+          <Text as="p">
+            You can now set individual product prices from the <strong>Catalog</strong> page.
+          </Text>
+        </Banner>
+      )}
+      {!useAutoPricing && !autoPricingBanner && (
+        <Banner title="Manual pricing mode" tone="info">
+          <Text as="p">
+            Auto-pricing is off. Set prices individually from the Catalog page.
+            Re-enable auto-pricing below to resume markup-based pricing.
+          </Text>
+        </Banner>
+      )}
       {priceSyncQueued && (
         <Banner title="Prices are updating" tone="success">
           <Text as="p">
@@ -547,71 +579,95 @@ function MarkupTab() {
         </Banner>
       )}
 
+      {/* Auto-pricing toggle */}
       <Card>
         <BlockStack gap="400">
-          <Text variant="headingMd" as="h2">Markup Pricing</Text>
-          <Text as="p" tone="subdued">
-            Markup applied on top of AOA&apos;s cost price when syncing products to
-            your store. Enter values as percentages (e.g. 25 = 25%). Changes
-            trigger a background price update (~10 minutes).
-          </Text>
-          <Divider />
-          <InlineStack gap="400">
-            <TextField
-              label="Retail (%)"
-              type="number"
-              value={retailPct}
-              onChange={(v) => { setRetailPct(v); setFormDirty(true); }}
-              suffix="%"
-              min={0}
-              max={1000}
-              autoComplete="off"
-              error={retailPct !== '' && !isValidPercent(retailPct)
-                ? 'Enter a value between 0 and 1000' : undefined}
-            />
-            <TextField
-              label="VDS (%)"
-              type="number"
-              value={vdsPct}
-              onChange={(v) => { setVdsPct(v); setFormDirty(true); }}
-              suffix="%"
-              min={0}
-              max={1000}
-              autoComplete="off"
-              error={vdsPct !== '' && !isValidPercent(vdsPct)
-                ? 'Enter a value between 0 and 1000' : undefined}
-            />
-            <TextField
-              label="Wholesale (%)"
-              type="number"
-              value={wholesalePct}
-              onChange={(v) => { setWholesalePct(v); setFormDirty(true); }}
-              suffix="%"
-              min={0}
-              max={1000}
-              autoComplete="off"
-              error={wholesalePct !== '' && !isValidPercent(wholesalePct)
-                ? 'Enter a value between 0 and 1000' : undefined}
-            />
-          </InlineStack>
-          <InlineStack>
+          <InlineStack align="space-between" blockAlign="center">
+            <BlockStack gap="100">
+              <Text variant="headingMd" as="h2">Auto-pricing</Text>
+              <Text as="p" tone="subdued">
+                When on, AOA calculates list prices from your markup settings automatically.
+                Turn off to set prices manually per product from the Catalog page.
+              </Text>
+            </BlockStack>
             <Button
-              variant="primary"
-              onClick={() =>
-                updateMutation.mutate({
-                  markup_pct_retail: fromPercent(retailPct),
-                  markup_pct_vds: fromPercent(vdsPct),
-                  markup_pct_wholesale: fromPercent(wholesalePct),
-                })
-              }
+              variant={useAutoPricing ? 'primary' : 'secondary'}
               loading={updateMutation.isPending}
-              disabled={!formDirty || updateMutation.isPending}
+              onClick={handleAutoPricingToggle}
             >
-              Save markup
+              {useAutoPricing ? 'On — switch to manual' : 'Off — re-enable auto'}
             </Button>
           </InlineStack>
         </BlockStack>
       </Card>
+
+      {useAutoPricing && (
+        <Card>
+          <BlockStack gap="400">
+            <Text variant="headingMd" as="h2">Markup Pricing</Text>
+            <Text as="p" tone="subdued">
+              Markup applied on top of AOA&apos;s cost price when syncing products to
+              your store. Enter values as percentages (e.g. 25 = 25%). Changes
+              trigger a background price update (~10 minutes).
+            </Text>
+            <Divider />
+            <InlineStack gap="400">
+              <TextField
+                label="Retail (%)"
+                type="number"
+                value={retailPct}
+                onChange={(v) => { setRetailPct(v); setFormDirty(true); }}
+                suffix="%"
+                min={0}
+                max={1000}
+                autoComplete="off"
+                error={retailPct !== '' && !isValidPercent(retailPct)
+                  ? 'Enter a value between 0 and 1000' : undefined}
+              />
+              <TextField
+                label="VDS (%)"
+                type="number"
+                value={vdsPct}
+                onChange={(v) => { setVdsPct(v); setFormDirty(true); }}
+                suffix="%"
+                min={0}
+                max={1000}
+                autoComplete="off"
+                error={vdsPct !== '' && !isValidPercent(vdsPct)
+                  ? 'Enter a value between 0 and 1000' : undefined}
+              />
+              <TextField
+                label="Wholesale (%)"
+                type="number"
+                value={wholesalePct}
+                onChange={(v) => { setWholesalePct(v); setFormDirty(true); }}
+                suffix="%"
+                min={0}
+                max={1000}
+                autoComplete="off"
+                error={wholesalePct !== '' && !isValidPercent(wholesalePct)
+                  ? 'Enter a value between 0 and 1000' : undefined}
+              />
+            </InlineStack>
+            <InlineStack>
+              <Button
+                variant="primary"
+                onClick={() =>
+                  updateMutation.mutate({
+                    markup_pct_retail: fromPercent(retailPct),
+                    markup_pct_vds: fromPercent(vdsPct),
+                    markup_pct_wholesale: fromPercent(wholesalePct),
+                  })
+                }
+                loading={updateMutation.isPending}
+                disabled={!formDirty || updateMutation.isPending}
+              >
+                Save markup
+              </Button>
+            </InlineStack>
+          </BlockStack>
+        </Card>
+      )}
 
       <Card>
         <BlockStack gap="400">

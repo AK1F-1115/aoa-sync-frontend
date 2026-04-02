@@ -174,6 +174,12 @@ export interface StoreSettingsResponse {
   push_retail: boolean;
   /** ICAPS auto-fills VDS (dropship) slots up to plan limit on each run */
   push_vds: boolean;
+  /**
+   * When true (default), AOA automatically calculates list prices using the
+   * store's markup settings. When false, merchants set individual product
+   * prices manually via PATCH /store/catalog/{sku}/price.
+   */
+  use_auto_pricing: boolean;
 }
 
 /** Request body for PATCH /store/settings — all fields optional */
@@ -190,6 +196,11 @@ export interface StoreSettingsUpdateRequest {
   bootstrap_brands?: boolean;
   /** Minimum SKUs a brand needs to get a collection (≥ 1) */
   min_brand_products?: number;
+  /**
+   * Toggle automatic pricing. true = use markup settings (default).
+   * false = manual pricing mode; merchants set per-SKU prices.
+   */
+  use_auto_pricing?: boolean;
 }
 
 /** Response from PATCH /store/settings */
@@ -322,6 +333,24 @@ export interface CatalogProduct {
    * either value for status=all.
    */
   in_shopify: boolean;
+  /**
+   * The merchant's manually set Shopify price for this SKU.
+   * Only populated when use_auto_pricing = false on active items.
+   * Null when auto-pricing is on or item is not active.
+   */
+  your_price: string | null;
+  /**
+   * Minimum Advertised Price set by the manufacturer.
+   * Informational — shown as a reference alongside list_price.
+   */
+  map_price: string | null;
+  /**
+   * True when your_price (or list_price in auto mode) is below map_price.
+   * Triggers a ⚠️ MAP warning badge on the product row.
+   */
+  below_map: boolean;
+  /** Product thumbnail URL from the AOA catalog; null if none. */
+  image_url: string | null;
   /**
    * Tags applied to this product — same tags pushed to Shopify.
    * Namespaces: source: | fulfillment: | marketplace: | country: | uom: | stock-status: | prop65:
@@ -520,4 +549,29 @@ export interface RemoveCatalogResponse {
   slots_used: number;
   slots_total: number | null;
   slots_remaining: number | null;
+}
+
+// ---------------------------------------------------------------------------
+// Manual price editing — PATCH /store/catalog/{sku}/price
+// ---------------------------------------------------------------------------
+
+/**
+ * Request body for PATCH /store/catalog/{sku}/price
+ * Only accepted when store.use_auto_pricing = false.
+ * Backend returns 409 if store is still in auto-pricing mode.
+ */
+export interface PriceUpdateRequest {
+  /** New Shopify list price in USD (positive number) */
+  your_price: number;
+}
+
+/** Success response from PATCH /store/catalog/{sku}/price */
+export interface PriceUpdateResponse {
+  ok: boolean;
+  /** Updated price as a formatted string e.g. "29.99" */
+  your_price: string;
+  /** MAP price for reference; null if not set by manufacturer */
+  map_price: string | null;
+  /** True if the submitted price is below the MAP price */
+  below_map: boolean;
 }

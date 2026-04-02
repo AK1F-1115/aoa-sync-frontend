@@ -23,6 +23,8 @@ import type {
   PushCatalogResponse,
   RemoveCatalogRequest,
   RemoveCatalogResponse,
+  PriceUpdateRequest,
+  PriceUpdateResponse,
 } from '@/types/api';
 
 /**
@@ -113,4 +115,25 @@ export async function removeCatalog(
  */
 export async function getProductDetail(sku: string): Promise<ProductDetailResponse> {
   return apiFetch<ProductDetailResponse>(`/store/catalog/${encodeURIComponent(sku)}?include_pool=true`);
+}
+
+/**
+ * Manually set the Shopify price for an active SKU.
+ *
+ * Only works when use_auto_pricing = false on store settings.
+ * Backend returns:
+ *   409 — store is in auto-pricing mode; switch to manual first
+ *   404 — SKU is not in the store's active catalog
+ *
+ * On success show: "Price updated — syncing to Shopify."
+ */
+export async function patchProductPrice(
+  sku: string,
+  price: number
+): Promise<PriceUpdateResponse> {
+  const body: PriceUpdateRequest = { your_price: price };
+  return apiFetch<PriceUpdateResponse>(
+    `/store/catalog/${encodeURIComponent(sku)}/price`,
+    { method: 'PATCH', body: JSON.stringify(body) }
+  );
 }
