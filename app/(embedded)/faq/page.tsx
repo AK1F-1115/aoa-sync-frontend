@@ -201,12 +201,22 @@ const FAQ_ITEMS: FaqItem[] = [
     tag: 'Shopify',
     question: 'Why does a product show "In Shopify" instead of "Active" or "Draft" in the status?',
     answer: (
-      <Text as="p">
-        The product is confirmed to be in your Shopify store, but AOA has not yet received a status
-        update from Shopify (Active/Draft). This typically resolves after the next sync. If it persists,
-        check the product in Shopify Admin to confirm its status, and use the View in Shopify Admin
-        link on the product detail page.
-      </Text>
+      <BlockStack gap="200">
+        <Text as="p">
+          Each product in your Shopify store has a status of <strong>Active</strong> (visible to customers)
+          or <strong>Draft</strong> (hidden from your storefront). AOA displays this status once it has
+          been retrieved from Shopify.
+        </Text>
+        <Text as="p">
+          <strong>"In Shopify"</strong> means the product is confirmed to be in your store, but AOA has
+          not yet received the Active/Draft status from Shopify. This is expected to resolve automatically
+          after the next sync cycle.
+        </Text>
+        <Text as="p">
+          In the meantime, you can check the actual status by clicking <strong>View in Shopify Admin</strong>
+          on the product detail page.
+        </Text>
+      </BlockStack>
     ),
   },
 ];
