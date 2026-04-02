@@ -768,6 +768,8 @@ function ProductRow({
   actionButton,
   detailUrl,
   showEditPrice,
+  showMapPrice,
+  showYourPrice,
 }: {
   product: CatalogProduct;
   rowId: string;
@@ -778,6 +780,10 @@ function ProductRow({
   detailUrl?: string;
   /** When true, shows an Edit Price button (manual pricing mode) */
   showEditPrice?: boolean;
+  /** When true, shows MAP sub-text and below-MAP badge under list price */
+  showMapPrice?: boolean;
+  /** When true, shows a Your Price column cell (active catalog only) */
+  showYourPrice?: boolean;
 }) {
   const status = product.last_shopify_status?.toUpperCase() ?? null;
   const [editPriceOpen, setEditPriceOpen] = useState(false);
@@ -808,7 +814,7 @@ function ProductRow({
               <Text fontWeight="semibold" as="span">{product.product_name ?? '—'}</Text>
             )}
             <InlineStack gap="100" blockAlign="center">
-              <Text tone="subdued" variant="bodySm" as="span">SKU: {product.aoa_sku}</Text>
+              <Text tone="subdued" variant="bodySm" as="span">AOA SKU: {product.aoa_sku}</Text>
               {product.variant_tier != null && product.variant_tier > 1 && (
                 <Badge tone="info" size="small">{`Qty ×${product.variant_tier}`}</Badge>
               )}
@@ -831,14 +837,30 @@ function ProductRow({
         <IndexTable.Cell>
           <BlockStack gap="050">
             <Text as="span">{formatPrice(product.list_price)}</Text>
-            {product.map_price && (
+            {showMapPrice && product.map_price && (
               <Text as="span" tone="subdued" variant="bodySm">MAP: {formatPrice(product.map_price)}</Text>
             )}
-            {product.below_map && (
+            {showMapPrice && product.below_map && (
               <Badge tone="warning" size="small">⚠ Below MAP</Badge>
             )}
           </BlockStack>
         </IndexTable.Cell>
+        {showYourPrice && (
+          <IndexTable.Cell>
+            <BlockStack gap="050">
+              <Text as="span" fontWeight="semibold">
+                {formatPrice(product.your_price ?? product.list_price)}
+              </Text>
+              {showEditPrice && (
+                <span onClick={(e) => e.stopPropagation()}>
+                  <Button size="slim" variant="plain" onClick={() => setEditPriceOpen(true)}>
+                    Edit
+                  </Button>
+                </span>
+              )}
+            </BlockStack>
+          </IndexTable.Cell>
+        )}
         <IndexTable.Cell><Text as="span">{product.catalog_quantity ?? '—'}</Text></IndexTable.Cell>
         <IndexTable.Cell>
           {status ? (
@@ -852,16 +874,7 @@ function ProductRow({
           )}
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <InlineStack gap="200" blockAlign="center">
-            {showEditPrice && (
-              <span onClick={(e) => e.stopPropagation()}>
-                <Button size="slim" variant="plain" onClick={() => setEditPriceOpen(true)}>
-                  Edit price
-                </Button>
-              </span>
-            )}
-            {actionButton}
-          </InlineStack>
+          {actionButton}
         </IndexTable.Cell>
       </IndexTable.Row>
       {showEditPrice && (
@@ -905,6 +918,8 @@ function ProductGroupRows({
   actionButton,
   detailUrl,
   showEditPrice,
+  showMapPrice,
+  showYourPrice,
 }: {
   group: RowProduct[];
   startIndex: number;
@@ -916,6 +931,10 @@ function ProductGroupRows({
   detailUrl?: string;
   /** When true, shows an Edit Price button (manual pricing mode) */
   showEditPrice?: boolean;
+  /** When true, shows MAP sub-text and below-MAP badge under list price */
+  showMapPrice?: boolean;
+  /** When true, shows a Your Price column cell (active catalog only) */
+  showYourPrice?: boolean;
 }) {
   const first = group[0];
   const count = group.length;
@@ -954,7 +973,7 @@ function ProductGroupRows({
               <Text fontWeight="semibold" as="span">{first.product_name ?? '\u2014'}</Text>
             )}
             <InlineStack gap="100" blockAlign="center">
-              <Text tone="subdued" variant="bodySm" as="span">SKU: {first.aoa_sku}</Text>
+              <Text tone="subdued" variant="bodySm" as="span">AOA SKU: {first.aoa_sku}</Text>
               <Badge tone="attention" size="small">{`${count} price tiers`}</Badge>
               <button style={toggleStyle} onClick={onToggle}>
                 {isExpanded ? '\u25b2 hide' : '\u25bc expand'}
@@ -982,14 +1001,30 @@ function ProductGroupRows({
             <Text as="span" tone="subdued">
               {isExpanded ? 'See tiers' : `$${Math.min(...group.map(p => parseFloat(p.list_price ?? '0') || 0)).toFixed(2)}\u2009\u2013\u2009$${Math.max(...group.map(p => parseFloat(p.list_price ?? '0') || 0)).toFixed(2)}`}
             </Text>
-            {first.map_price && !isExpanded && (
+            {showMapPrice && first.map_price && !isExpanded && (
               <Text as="span" tone="subdued" variant="bodySm">MAP: {formatPrice(first.map_price)}</Text>
             )}
-            {first.below_map && !isExpanded && (
+            {showMapPrice && first.below_map && !isExpanded && (
               <Badge tone="warning" size="small">⚠ Below MAP</Badge>
             )}
           </BlockStack>
         </IndexTable.Cell>
+        {showYourPrice && (
+          <IndexTable.Cell>
+            <BlockStack gap="050">
+              <Text as="span" fontWeight="semibold">
+                {isExpanded ? 'See tiers' : formatPrice(first.your_price ?? first.list_price)}
+              </Text>
+              {showEditPrice && !isExpanded && (
+                <span onClick={(e) => e.stopPropagation()}>
+                  <Button size="slim" variant="plain" onClick={() => setEditPriceOpen(true)}>
+                    Edit
+                  </Button>
+                </span>
+              )}
+            </BlockStack>
+          </IndexTable.Cell>
+        )}
         <IndexTable.Cell><Text as="span">{first.catalog_quantity ?? '\u2014'}</Text></IndexTable.Cell>
         <IndexTable.Cell>
           {status ? (
@@ -1003,16 +1038,7 @@ function ProductGroupRows({
           )}
         </IndexTable.Cell>
         <IndexTable.Cell>
-          <InlineStack gap="200" blockAlign="center">
-            {showEditPrice && (
-              <span onClick={(e) => e.stopPropagation()}>
-                <Button size="slim" variant="plain" onClick={() => setEditPriceOpen(true)}>
-                  Edit price
-                </Button>
-              </span>
-            )}
-            {actionButton}
-          </InlineStack>
+          {actionButton}
         </IndexTable.Cell>
       </IndexTable.Row>
 
@@ -1045,6 +1071,7 @@ function ProductGroupRows({
           <IndexTable.Cell />
           <IndexTable.Cell><Text as="span">{formatPrice(product.merchant_cost)}</Text></IndexTable.Cell>
           <IndexTable.Cell><Text as="span">{formatPrice(product.list_price)}</Text></IndexTable.Cell>
+          {showYourPrice && <IndexTable.Cell><Text as="span" tone="subdued">{formatPrice(product.your_price ?? product.list_price)}</Text></IndexTable.Cell>}
           <IndexTable.Cell><Text as="span">{product.catalog_quantity ?? '\u2014'}</Text></IndexTable.Cell>
           <IndexTable.Cell />
           <IndexTable.Cell />
@@ -1169,7 +1196,7 @@ function ActiveCatalogTab({
 
   const headings = [
     { title: '' }, { title: 'Product' }, { title: 'Type' }, { title: 'Category' }, { title: 'Brand' },
-    { title: 'Cost' }, { title: 'List price' }, { title: 'Qty' }, { title: 'Status' }, { title: 'Action' },
+    { title: 'Cost' }, { title: 'List price' }, { title: 'Your price' }, { title: 'Qty' }, { title: 'Status' }, { title: 'Action' },
   ] as [{ title: string }, ...{ title: string }[]];
 
   return (
@@ -1306,7 +1333,9 @@ function ActiveCatalogTab({
                     <ProductRow key={key} product={group[0]} rowId={key} index={pos}
                       selected={selectedResources.includes(key)} actionButton={removeBtn}
                       detailUrl={`/products/${encodeURIComponent(group[0].aoa_sku)}`}
-                      showEditPrice={isManualPricing} />
+                      showEditPrice={isManualPricing}
+                      showMapPrice
+                      showYourPrice />
                   );
                   pos += 1;
                   return el;
@@ -1317,7 +1346,9 @@ function ActiveCatalogTab({
                     selectedResources={selectedResources} isExpanded={expanded}
                     onToggle={() => toggleExpand(group[0].aoa_sku)} actionButton={removeBtn}
                     detailUrl={`/products/${encodeURIComponent(group[0].aoa_sku)}`}
-                    showEditPrice={isManualPricing} />
+                    showEditPrice={isManualPricing}
+                    showMapPrice
+                    showYourPrice />
                 );
                 pos += expanded ? 1 + group.length : 1;
                 return el;

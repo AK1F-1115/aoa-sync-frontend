@@ -227,7 +227,6 @@ function ProductInfoPanel({ product }: { product: ProductDetailResponse }) {
         {product.manufacturer && product.manufacturer !== product.brand && (
           <LabelValue label="Manufacturer" value={product.manufacturer} />
         )}
-        {product.supplier_item_number && <LabelValue label="Supplier #" value={product.supplier_item_number} />}
         {product.upc && <LabelValue label="UPC" value={product.upc} />}
         {product.shipping_profile_key && (
           <LabelValue
