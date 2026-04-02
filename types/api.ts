@@ -496,6 +496,8 @@ export interface CatalogParams {
 export interface CatalogSummary {
   /** Total active synced variants (active=true rows in shopify_variant_map) */
   total_active: number;
+  /** Distinct products (SKUs) in the active catalog — may be less than total_active when VDS tier-2 variants exist */
+  unique_product_count: number;
   /** Essendant (warehouse/retail) variant count */
   retail_count: number;
   /** Essendant VDS (dropship) variant count */

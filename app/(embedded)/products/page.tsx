@@ -169,15 +169,20 @@ function SummaryBar({ summary, isLoading }: { summary: CatalogSummary | undefine
   }
   if (!summary) return null;
 
+  const vdsSingleCount = (summary.vds_count ?? 0) - (summary.vds_tier2_count ?? 0);
+
   const stats: { label: string; value: string; sub?: string }[] = [
-    { label: 'Total active',  value: (summary.total_active ?? 0).toLocaleString() },
-    { label: 'Warehouse',     value: (summary.retail_count ?? 0).toLocaleString() },
     {
-      label: 'Dropship',
-      value: (summary.vds_count ?? 0).toLocaleString(),
-      sub: `${(summary.vds_tier2_count ?? 0).toLocaleString()} with Tier 2`,
+      label: 'Products in Shopify',
+      value: (summary.unique_product_count ?? summary.total_active ?? 0).toLocaleString(),
+      sub: summary.total_active !== summary.unique_product_count
+        ? `${(summary.total_active ?? 0).toLocaleString()} total variants`
+        : undefined,
     },
-    { label: 'Last sync',     value: formatDateTime(summary.last_sync_at) },
+    { label: 'Warehouse', value: (summary.retail_count ?? 0).toLocaleString() },
+    { label: 'Dropship — single tier', value: vdsSingleCount.toLocaleString() },
+    { label: 'Dropship — w/ Tier 2', value: (summary.vds_tier2_count ?? 0).toLocaleString() },
+    { label: 'Last sync', value: formatDateTime(summary.last_sync_at) },
   ];
 
   return (

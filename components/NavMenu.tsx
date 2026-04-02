@@ -30,6 +30,7 @@ export function NavMenu() {
       <a href="/products">Products</a>
       <a href="/orders">Orders</a>
       <a href="/settings">Settings</a>
+      <a href="/faq">FAQ</a>
     </AppBridgeNavMenu>
   );
 }
