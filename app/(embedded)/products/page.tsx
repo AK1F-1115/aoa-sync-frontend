@@ -159,7 +159,12 @@ function SlotCounter({
 // Summary bar
 // ---------------------------------------------------------------------------
 
-function SummaryBar({ summary, isLoading, isError }: { summary: CatalogSummary | undefined; isLoading: boolean; isError?: boolean }) {
+function SummaryBar({ summary, isLoading, isError, activeTotal }: {
+  summary: CatalogSummary | undefined;
+  isLoading: boolean;
+  isError?: boolean;
+  activeTotal?: number;
+}) {
   if (isLoading && !summary) {
     return (
       <Card>
@@ -167,10 +172,21 @@ function SummaryBar({ summary, isLoading, isError }: { summary: CatalogSummary |
       </Card>
     );
   }
-  if (isError && !summary) {
-    return null; // silent — summary is non-critical, don't block the page
+
+  // If summary failed but we have the total from the active count query, show a minimal bar
+  if (!summary) {
+    if ((activeTotal ?? 0) === 0) return null;
+    return (
+      <Card>
+        <InlineStack gap="600" wrap>
+          <BlockStack gap="050">
+            <Text as="span" tone="subdued" variant="bodySm">Products in Shopify</Text>
+            <Text as="span" fontWeight="semibold" variant="bodyMd">{(activeTotal ?? 0).toLocaleString()}</Text>
+          </BlockStack>
+        </InlineStack>
+      </Card>
+    );
   }
-  if (!summary) return null;
 
   // unique_product_count may not be returned by older backend versions — fall back to total_active
   const productCount = summary.unique_product_count ?? summary.total_active ?? 0;
@@ -1124,10 +1140,12 @@ function ActiveCatalogTab({
   summary,
   summaryLoading,
   summaryError,
+  activeTotal,
 }: {
   summary: CatalogSummary | undefined;
   summaryLoading: boolean;
   summaryError: boolean;
+  activeTotal: number;
 }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -1239,7 +1257,7 @@ function ActiveCatalogTab({
         </Banner>
       )}
 
-      <SummaryBar summary={summary} isLoading={summaryLoading} isError={summaryError} />
+      <SummaryBar summary={summary} isLoading={summaryLoading} isError={summaryError} activeTotal={activeTotal} />
 
       {data && (
         <SlotCounter
@@ -1798,11 +1816,17 @@ const CATALOG_TABS = [
 export default function ProductsPage() {
   const [selectedTab, setSelectedTab] = useState(0);
 
-  const { data: summary, isLoading: summaryLoading, isError: summaryError } = useQuery({
+  const { data: summary, isLoading: summaryLoading, isError: summaryError, error: summaryFetchError } = useQuery({
     queryKey: ['catalogSummary'],
     queryFn: getCatalogSummary,
     staleTime: 2 * 60_000,
+    retry: 1,
   });
+
+  // Log summary errors in dev so we can diagnose without opening devtools
+  if (summaryError && summaryFetchError) {
+    console.error('[AOA] /store/catalog/summary failed:', summaryFetchError);
+  }
 
   // Light query for the page subtitle — '_count' discriminator prevents
   // this page_size:1 entry from colliding with the ActiveCatalogTab's
@@ -1838,7 +1862,7 @@ export default function ProductsPage() {
       <Tabs tabs={CATALOG_TABS} selected={selectedTab} onSelect={setSelectedTab}>
         <Box paddingBlockStart="400">
           {selectedTab === 0 && (
-            <ActiveCatalogTab summary={summary} summaryLoading={summaryLoading} summaryError={summaryError} />
+            <ActiveCatalogTab summary={summary} summaryLoading={summaryLoading} summaryError={summaryError} activeTotal={total} />
           )}
           {selectedTab === 1 && (
             <AvailableCatalogTab summary={summary} />

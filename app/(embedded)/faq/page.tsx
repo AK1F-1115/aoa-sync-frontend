@@ -214,7 +214,7 @@ const FAQ_ITEMS: FaqItem[] = [
         </Text>
         <Text as="p">
           In the meantime, you can check the actual status by clicking <strong>View in Shopify Admin</strong>
-          on the product detail page.
+           on the product detail page.
         </Text>
       </BlockStack>
     ),
