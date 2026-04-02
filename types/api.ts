@@ -397,6 +397,8 @@ export interface ProductDetailResponse {
   category_3: string | null;
   // Media — empty array [] if none, never null
   images: { url: string; alt: string | null; position: number }[];
+  /** Primary image URL — main_image (retail) or vds_image_url (VDS); null if unavailable */
+  image_url: string | null;
   // Physical
   weight_lbs: number | null;
   length_in: number | null;
