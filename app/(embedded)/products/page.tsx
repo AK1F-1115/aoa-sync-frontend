@@ -159,7 +159,7 @@ function SlotCounter({
 // Summary bar
 // ---------------------------------------------------------------------------
 
-function SummaryBar({ summary, isLoading }: { summary: CatalogSummary | undefined; isLoading: boolean }) {
+function SummaryBar({ summary, isLoading, isError }: { summary: CatalogSummary | undefined; isLoading: boolean; isError?: boolean }) {
   if (isLoading && !summary) {
     return (
       <Card>
@@ -167,21 +167,28 @@ function SummaryBar({ summary, isLoading }: { summary: CatalogSummary | undefine
       </Card>
     );
   }
+  if (isError && !summary) {
+    return null; // silent — summary is non-critical, don't block the page
+  }
   if (!summary) return null;
 
-  const vdsSingleCount = (summary.vds_count ?? 0) - (summary.vds_tier2_count ?? 0);
+  // unique_product_count may not be returned by older backend versions — fall back to total_active
+  const productCount = summary.unique_product_count ?? summary.total_active ?? 0;
+  const variantCount = summary.total_active ?? 0;
+  const vdsTier2 = summary.vds_tier2_count ?? 0;
+  const vdsSingleCount = (summary.vds_count ?? 0) - vdsTier2;
 
   const stats: { label: string; value: string; sub?: string }[] = [
     {
       label: 'Products in Shopify',
-      value: (summary.unique_product_count ?? summary.total_active ?? 0).toLocaleString(),
-      sub: summary.total_active !== summary.unique_product_count
-        ? `${(summary.total_active ?? 0).toLocaleString()} total variants`
+      value: productCount.toLocaleString(),
+      sub: variantCount !== productCount
+        ? `${variantCount.toLocaleString()} total variants`
         : undefined,
     },
     { label: 'Warehouse', value: (summary.retail_count ?? 0).toLocaleString() },
     { label: 'Dropship — single tier', value: vdsSingleCount.toLocaleString() },
-    { label: 'Dropship — w/ Tier 2', value: (summary.vds_tier2_count ?? 0).toLocaleString() },
+    { label: 'Dropship — w/ Tier 2', value: vdsTier2.toLocaleString() },
     { label: 'Last sync', value: formatDateTime(summary.last_sync_at) },
   ];
 
@@ -1116,9 +1123,11 @@ function ProductGroupRows({
 function ActiveCatalogTab({
   summary,
   summaryLoading,
+  summaryError,
 }: {
   summary: CatalogSummary | undefined;
   summaryLoading: boolean;
+  summaryError: boolean;
 }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -1230,7 +1239,7 @@ function ActiveCatalogTab({
         </Banner>
       )}
 
-      <SummaryBar summary={summary} isLoading={summaryLoading} />
+      <SummaryBar summary={summary} isLoading={summaryLoading} isError={summaryError} />
 
       {data && (
         <SlotCounter
@@ -1789,7 +1798,7 @@ const CATALOG_TABS = [
 export default function ProductsPage() {
   const [selectedTab, setSelectedTab] = useState(0);
 
-  const { data: summary, isLoading: summaryLoading } = useQuery({
+  const { data: summary, isLoading: summaryLoading, isError: summaryError } = useQuery({
     queryKey: ['catalogSummary'],
     queryFn: getCatalogSummary,
     staleTime: 2 * 60_000,
@@ -1829,7 +1838,7 @@ export default function ProductsPage() {
       <Tabs tabs={CATALOG_TABS} selected={selectedTab} onSelect={setSelectedTab}>
         <Box paddingBlockStart="400">
           {selectedTab === 0 && (
-            <ActiveCatalogTab summary={summary} summaryLoading={summaryLoading} />
+            <ActiveCatalogTab summary={summary} summaryLoading={summaryLoading} summaryError={summaryError} />
           )}
           {selectedTab === 1 && (
             <AvailableCatalogTab summary={summary} />
