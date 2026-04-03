@@ -587,3 +587,53 @@ export interface PriceUpdateResponse {
   /** True if the submitted price is below the MAP price */
   below_map: boolean;
 }
+
+// ---------------------------------------------------------------------------
+// Wishlist — GET /store/wishlist, POST /store/wishlist, DELETE /store/wishlist/{sku}
+// ---------------------------------------------------------------------------
+
+/**
+ * A single saved wishlist entry as returned by the backend.
+ * The backend stores one row per (store_id, sku) pair.
+ */
+export interface WishlistItem {
+  sku: string;
+  name: string | null;
+  image_url: string | null;
+  merchant_cost: string | null;
+  list_price: string | null;
+  brand: string | null;
+  category: string | null;
+  /** ISO 8601 timestamp when the item was saved */
+  added_at: string;
+}
+
+/** Response from GET /store/wishlist */
+export interface WishlistResponse {
+  items: WishlistItem[];
+}
+
+/**
+ * Request body for POST /store/wishlist.
+ * Backend infers store_id from the session token.
+ */
+export interface WishlistAddRequest {
+  sku: string;
+  name: string | null;
+  image_url: string | null;
+  merchant_cost: string | null;
+  list_price: string | null;
+  brand: string | null;
+  category: string | null;
+}
+
+/** Response from POST /store/wishlist */
+export interface WishlistAddResponse {
+  ok: boolean;
+  item: WishlistItem;
+}
+
+/** Response from DELETE /store/wishlist/{sku} and DELETE /store/wishlist */
+export interface WishlistRemoveResponse {
+  ok: boolean;
+}

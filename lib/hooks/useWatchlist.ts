@@ -1,119 +1,143 @@
 /**
  * lib/hooks/useWatchlist.ts
  *
- * localStorage-backed watchlist (shopping list) for product research.
+ * Backend-persisted watchlist hook (React Query).
  *
- * Merchants can save products while browsing the Available Catalog, then review
- * their watchlist before deciding what to push to Shopify. The list persists
- * across page reloads and browser sessions on the same device.
+ * All mutations use optimistic updates so the UI responds instantly —
+ * the server is updated in the background. On any error the optimistic
+ * change is rolled back automatically.
  *
- * Storage key: 'aoa_watchlist'
- * Max items:   200 (oldest dropped when exceeded)
+ * The hook interface is intentionally identical to the old localStorage
+ * version so the rest of the codebase needs no changes.
+ *
+ * Backend contract (all authenticated via Shopify JWT):
+ *   GET    /store/wishlist          → WishlistResponse
+ *   POST   /store/wishlist          → WishlistAddResponse   (body: WishlistAddRequest)
+ *   DELETE /store/wishlist/{sku}    → WishlistRemoveResponse
+ *   DELETE /store/wishlist          → WishlistRemoveResponse  (clear all)
  */
 
-import { useState, useCallback } from 'react';
-
-const STORAGE_KEY = 'aoa_watchlist';
-const MAX_ITEMS = 200;
-
-export interface WatchlistEntry {
-  sku: string;
-  name: string | null;
-  image_url: string | null;
-  merchant_cost: string | null;
-  list_price: string | null;
-  brand: string | null;
-  category: string | null;
-  /** ISO 8601 timestamp when the item was saved */
-  added_at: string;
-}
+import { useCallback } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import {
+  getWishlist,
+  addToWishlist,
+  removeFromWishlist,
+  clearWishlist,
+} from '@/lib/api/wishlist';
+import type { WishlistItem, WishlistResponse } from '@/types/api';
 
 // ---------------------------------------------------------------------------
-// Storage helpers
+// Re-export type alias so consumers keep using WatchlistEntry
 // ---------------------------------------------------------------------------
 
-function readStorage(): WatchlistEntry[] {
-  if (typeof window === 'undefined') return [];
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? (parsed as WatchlistEntry[]) : [];
-  } catch {
-    return [];
-  }
-}
+/** Identical to WishlistItem — aliased so page components need no import changes. */
+export type WatchlistEntry = WishlistItem;
 
-function writeStorage(items: WatchlistEntry[]): void {
-  if (typeof window === 'undefined') return;
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
-  } catch {
-    // Storage quota exceeded — silently ignore
-  }
-}
+// ---------------------------------------------------------------------------
+// Query key
+// ---------------------------------------------------------------------------
+
+const QUERY_KEY = ['wishlist'] as const;
 
 // ---------------------------------------------------------------------------
 // Hook
 // ---------------------------------------------------------------------------
 
 export function useWatchlist() {
-  const [items, setItems] = useState<WatchlistEntry[]>(() => readStorage());
+  const queryClient = useQueryClient();
 
+  // ── Fetch ────────────────────────────────────────────────────────────────
+  const { data } = useQuery({
+    queryKey: QUERY_KEY,
+    queryFn: getWishlist,
+    staleTime: 5 * 60_000,
+    // Keep showing existing data while refetching — no loading flash
+    placeholderData: (prev) => prev,
+  });
+
+  const items: WatchlistEntry[] = data?.items ?? [];
+
+  // ── Add ──────────────────────────────────────────────────────────────────
+  const addMutation = useMutation({
+    mutationFn: (item: Omit<WatchlistEntry, 'added_at'>) => addToWishlist({ ...item }),
+    onMutate: async (newItem) => {
+      await queryClient.cancelQueries({ queryKey: QUERY_KEY });
+      const previous = queryClient.getQueryData<WishlistResponse>(QUERY_KEY);
+      queryClient.setQueryData<WishlistResponse>(QUERY_KEY, (old) => ({
+        items: [
+          { ...newItem, added_at: new Date().toISOString() },
+          ...(old?.items.filter((i) => i.sku !== newItem.sku) ?? []),
+        ].slice(0, 200),
+      }));
+      return { previous };
+    },
+    onError: (_err, _item, context) => {
+      if (context?.previous) queryClient.setQueryData(QUERY_KEY, context.previous);
+    },
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: QUERY_KEY }); },
+  });
+
+  // ── Remove ───────────────────────────────────────────────────────────────
+  const removeMutation = useMutation({
+    mutationFn: (sku: string) => removeFromWishlist(sku),
+    onMutate: async (sku) => {
+      await queryClient.cancelQueries({ queryKey: QUERY_KEY });
+      const previous = queryClient.getQueryData<WishlistResponse>(QUERY_KEY);
+      queryClient.setQueryData<WishlistResponse>(QUERY_KEY, (old) => ({
+        items: old?.items.filter((i) => i.sku !== sku) ?? [],
+      }));
+      return { previous };
+    },
+    onError: (_err, _sku, context) => {
+      if (context?.previous) queryClient.setQueryData(QUERY_KEY, context.previous);
+    },
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: QUERY_KEY }); },
+  });
+
+  // ── Clear all ─────────────────────────────────────────────────────────────
+  const clearMutation = useMutation({
+    mutationFn: () => clearWishlist(),
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: QUERY_KEY });
+      const previous = queryClient.getQueryData<WishlistResponse>(QUERY_KEY);
+      queryClient.setQueryData<WishlistResponse>(QUERY_KEY, { items: [] });
+      return { previous };
+    },
+    onError: (_err, _v, context) => {
+      if (context?.previous) queryClient.setQueryData(QUERY_KEY, context.previous);
+    },
+    onSettled: () => { void queryClient.invalidateQueries({ queryKey: QUERY_KEY }); },
+  });
+
+  // ── Public interface (same shape as before) ───────────────────────────────
   const isInWatchlist = useCallback(
     (sku: string) => items.some((i) => i.sku === sku),
     [items],
   );
 
   const addToWatchlist = useCallback(
-    (entry: Omit<WatchlistEntry, 'added_at'>) => {
-      setItems((prev) => {
-        if (prev.some((i) => i.sku === entry.sku)) return prev; // already saved
-        const updated: WatchlistEntry[] = [
-          { ...entry, added_at: new Date().toISOString() },
-          ...prev,
-        ].slice(0, MAX_ITEMS);
-        writeStorage(updated);
-        return updated;
-      });
-    },
-    [],
+    (entry: Omit<WatchlistEntry, 'added_at'>) => { addMutation.mutate(entry); },
+    [addMutation],
   );
 
-  const removeFromWatchlist = useCallback((sku: string) => {
-    setItems((prev) => {
-      const updated = prev.filter((i) => i.sku !== sku);
-      writeStorage(updated);
-      return updated;
-    });
-  }, []);
+  const removeFromWatchlist = useCallback(
+    (sku: string) => { removeMutation.mutate(sku); },
+    [removeMutation],
+  );
 
   const toggleWatchlist = useCallback(
     (entry: Omit<WatchlistEntry, 'added_at'>) => {
-      setItems((prev) => {
-        if (prev.some((i) => i.sku === entry.sku)) {
-          // Remove
-          const updated = prev.filter((i) => i.sku !== entry.sku);
-          writeStorage(updated);
-          return updated;
-        } else {
-          // Add
-          const updated: WatchlistEntry[] = [
-            { ...entry, added_at: new Date().toISOString() },
-            ...prev,
-          ].slice(0, MAX_ITEMS);
-          writeStorage(updated);
-          return updated;
-        }
-      });
+      if (items.some((i) => i.sku === entry.sku)) {
+        removeMutation.mutate(entry.sku);
+      } else {
+        addMutation.mutate(entry);
+      }
     },
-    [],
+    [items, addMutation, removeMutation],
   );
 
-  const clearWatchlist = useCallback(() => {
-    setItems([]);
-    writeStorage([]);
-  }, []);
+  const clearWatchlistItems = useCallback(() => { clearMutation.mutate(); }, [clearMutation]);
 
   return {
     items,
@@ -121,6 +145,7 @@ export function useWatchlist() {
     addToWatchlist,
     removeFromWatchlist,
     toggleWatchlist,
-    clearWatchlist,
+    clearWatchlist: clearWatchlistItems,
   };
 }
+
