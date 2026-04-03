@@ -1,6 +1,7 @@
 ﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Page,
   Card,
@@ -1451,7 +1452,15 @@ function ActiveCatalogTab({
 // "Available to Add" tab  (status=available)
 // ---------------------------------------------------------------------------
 
-function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined }) {
+function AvailableCatalogTab({
+  summary,
+  showPushAllBanner,
+  onDismissPushAllBanner,
+}: {
+  summary: CatalogSummary | undefined;
+  showPushAllBanner?: boolean;
+  onDismissPushAllBanner?: () => void;
+}) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
   const [searchValue, setSearchValue] = useState('');
@@ -1608,6 +1617,32 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
     },
   });
 
+  // Push-all mutation — triggered from the ?action=push_all banner
+  const [pushAllError, setPushAllError] = useState<string | null>(null);
+  const pushAllMutation = useMutation({
+    mutationFn: () => pushCatalog({ push_all: true }),
+    onSuccess: (result) => {
+      setPushAllError(null);
+      onDismissPushAllBanner?.();
+      void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+      void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
+      // Surface result count in the existing push success banner via setPushError reuse
+      // — actually just let the banner show via isSuccess on pushAllMutation
+    },
+    onError: (err) => {
+      if (err instanceof ApiError) {
+        const detail = parsePlanLimitDetail(err);
+        if (detail) {
+          setPushAllError(
+            `Your plan limit was reached. ${detail.slots_used != null ? detail.slots_used.toLocaleString() + ' products were added.' : ''}`
+          );
+          return;
+        }
+      }
+      setPushAllError('An unexpected error occurred. Please try again.');
+    },
+  });
+
   const hasBasicFilters    = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
   const researchActiveCount = [dMinCost, dMaxCost, dMinList, dMaxList, dMinQty, dMaxQty, minMargin]
     .filter(Boolean).length + (inStockOnly ? 1 : 0) + (marketplaceClear ? 1 : 0) + tagFilters.length;
@@ -1630,8 +1665,66 @@ function AvailableCatalogTab({ summary }: { summary: CatalogSummary | undefined 
   const showPushError = pushError !== null || (pushMutation.isError && !pushError);
   const atLimit = data != null && data.slots_remaining === 0;
 
+  // Slots info for push_all banner — use data if loaded, otherwise fall back to null
+  const slotsRemaining = data?.slots_remaining ?? null;
+  const noSlotsLeft = slotsRemaining === 0;
+
   return (
     <BlockStack gap="400">
+      {/* Push-all confirmation banner — shown when redirected from Settings */}
+      {showPushAllBanner && !noSlotsLeft && (
+        <Banner
+          title="Ready to add available products to your Shopify store"
+          tone="info"
+          onDismiss={onDismissPushAllBanner}
+        >
+          <BlockStack gap="300">
+            {slotsRemaining != null && (
+              <Text as="p" tone="subdued">
+                {slotsRemaining.toLocaleString()} slot{slotsRemaining !== 1 ? 's' : ''} remaining on your plan.
+              </Text>
+            )}
+            {pushAllMutation.isSuccess && (
+              <Text as="p" tone="subdued">
+                ✓ {pushAllMutation.data.pushed.toLocaleString()} product{pushAllMutation.data.pushed !== 1 ? 's' : ''} added successfully.
+              </Text>
+            )}
+            {pushAllError && (
+              <Text as="p" tone="critical">{pushAllError}</Text>
+            )}
+            {!pushAllMutation.isSuccess && (
+              <InlineStack gap="300">
+                <Button
+                  variant="primary"
+                  loading={pushAllMutation.isPending}
+                  disabled={pushAllMutation.isPending}
+                  onClick={() => { setPushAllError(null); pushAllMutation.mutate(); }}
+                >
+                  Add All Available Products
+                </Button>
+                <Button variant="secondary" onClick={onDismissPushAllBanner}>
+                  Cancel
+                </Button>
+              </InlineStack>
+            )}
+          </BlockStack>
+        </Banner>
+      )}
+
+      {/* If no slots left when push_all banner arrives, show a toast-style warning instead */}
+      {showPushAllBanner && noSlotsLeft && (
+        <Banner
+          title="No slots remaining on your plan"
+          tone="warning"
+          onDismiss={onDismissPushAllBanner}
+        >
+          <Text as="p">
+            Upgrade your plan to add more products, or remove existing products from the
+            <strong> My Shopify Catalog</strong> tab to free up slots.
+          </Text>
+        </Banner>
+      )}
+
       {data && (
         <SlotCounter
           slotsUsed={data.slots_used}
@@ -1818,7 +1911,22 @@ const CATALOG_TABS = [
 ];
 
 export default function ProductsPage() {
+  const searchParams = useSearchParams();
   const [selectedTab, setSelectedTab] = useState(0);
+  // push_all banner state — set true when navigated here from Settings with ?action=push_all
+  const [showPushAllBanner, setShowPushAllBanner] = useState(false);
+
+  // On mount: detect ?action=push_all, switch to Available tab, clear param from URL
+  useEffect(() => {
+    if (searchParams.get('action') === 'push_all') {
+      setSelectedTab(1);
+      setShowPushAllBanner(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete('action');
+      window.history.replaceState({}, '', url.toString());
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const { data: summary, isLoading: summaryLoading, isError: summaryError, error: summaryFetchError } = useQuery({
     queryKey: ['catalogSummary'],
@@ -1869,7 +1977,11 @@ export default function ProductsPage() {
             <ActiveCatalogTab summary={summary} summaryLoading={summaryLoading} summaryError={summaryError} activeTotal={total} />
           )}
           {selectedTab === 1 && (
-            <AvailableCatalogTab summary={summary} />
+            <AvailableCatalogTab
+              summary={summary}
+              showPushAllBanner={showPushAllBanner}
+              onDismissPushAllBanner={() => setShowPushAllBanner(false)}
+            />
           )}
         </Box>
       </Tabs>

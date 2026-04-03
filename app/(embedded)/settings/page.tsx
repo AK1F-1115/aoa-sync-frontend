@@ -472,6 +472,12 @@ function MarkupTab() {
   const [formDirty, setFormDirty] = useState(false);
   const [autoPricingBanner, setAutoPricingBanner] = useState<'enabled' | 'disabled' | null>(null);
 
+  // Auto-fill local state — not saved until "Save" is clicked
+  const [localPushRetail, setLocalPushRetail] = useState(false);
+  const [localPushVds, setLocalPushVds] = useState(false);
+  const [autoFillModalOpen, setAutoFillModalOpen] = useState(false);
+  const [autoFillNewlyEnabled, setAutoFillNewlyEnabled] = useState<{ retail: boolean; vds: boolean }>({ retail: false, vds: false });
+
   const {
     data: settings,
     isLoading,
@@ -489,6 +495,9 @@ function MarkupTab() {
       setRetailPct(toPercent(settings.markup_pct_retail));
       setVdsPct(toPercent(settings.markup_pct_vds));
       setWholesalePct(toPercent(settings.markup_pct_wholesale));
+      // Seed local auto-fill state from server (only on first load)
+      setLocalPushRetail(settings.push_retail ?? false);
+      setLocalPushVds(settings.push_vds ?? false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
@@ -507,6 +516,23 @@ function MarkupTab() {
     updateMutation.mutate({ use_auto_pricing: next });
     setAutoPricingBanner(next ? 'enabled' : 'disabled');
   };
+
+  // Separate mutation for auto-fill flags so it doesn't conflict with markup saves
+  const autoFillMutation = useMutation({
+    mutationFn: (body: { push_retail: boolean; push_vds: boolean }) =>
+      updateSettings(body),
+    onSuccess: (_data, vars) => {
+      void queryClient.invalidateQueries({ queryKey: ['settings'] });
+      const prevRetail = settings?.push_retail ?? false;
+      const prevVds    = settings?.push_vds    ?? false;
+      const newlyRetail = !prevRetail && vars.push_retail;
+      const newlyVds    = !prevVds    && vars.push_vds;
+      if (newlyRetail || newlyVds) {
+        setAutoFillNewlyEnabled({ retail: newlyRetail, vds: newlyVds });
+        setAutoFillModalOpen(true);
+      }
+    },
+  });
 
   if (isLoading) return <Card><SkeletonBodyText lines={6} /></Card>;
   if (isError) {
@@ -680,23 +706,84 @@ function MarkupTab() {
           <Checkbox
             label="Auto-fill warehouse products"
             helpText="Automatically add retail / warehouse products up to your plan limit on each sync."
-            checked={settings?.push_retail ?? false}
-            onChange={(checked) =>
-              updateMutation.mutate({ push_retail: checked })
-            }
-            disabled={updateMutation.isPending}
+            checked={localPushRetail}
+            onChange={setLocalPushRetail}
+            disabled={autoFillMutation.isPending}
           />
           <Checkbox
             label="Auto-fill dropship products"
             helpText="Automatically add VDS dropship products up to your plan limit on each sync."
-            checked={settings?.push_vds ?? false}
-            onChange={(checked) =>
-              updateMutation.mutate({ push_vds: checked })
-            }
-            disabled={updateMutation.isPending}
+            checked={localPushVds}
+            onChange={setLocalPushVds}
+            disabled={autoFillMutation.isPending}
           />
+
+          {autoFillMutation.isError && (
+            <Banner title="Could not save auto-fill settings" tone="critical">
+              <Text as="p">
+                {autoFillMutation.error instanceof ApiError
+                  ? autoFillMutation.error.message
+                  : 'An unexpected error occurred. Please try again.'}
+              </Text>
+            </Banner>
+          )}
+
+          <InlineStack>
+            <Button
+              variant="primary"
+              loading={autoFillMutation.isPending}
+              disabled={autoFillMutation.isPending}
+              onClick={() =>
+                autoFillMutation.mutate({ push_retail: localPushRetail, push_vds: localPushVds })
+              }
+            >
+              Save auto-fill settings
+            </Button>
+          </InlineStack>
         </BlockStack>
       </Card>
+
+      {/* Post-save modal — shown only when a flag was newly enabled */}
+      {(() => {
+        const { retail, vds } = autoFillNewlyEnabled;
+        const enabledLabel =
+          retail && vds ? 'Warehouse and Dropship products' :
+          retail        ? 'Warehouse products' :
+                          'Dropship products';
+        return (
+          <Modal
+            open={autoFillModalOpen}
+            onClose={() => setAutoFillModalOpen(false)}
+            title="Products ready to add"
+            primaryAction={{
+              content: 'Go to Catalog & Add Products',
+              onAction: () => {
+                setAutoFillModalOpen(false);
+                window.location.href = '/products?action=push_all';
+              },
+            }}
+            secondaryActions={[
+              { content: "I'll do it later", onAction: () => setAutoFillModalOpen(false) },
+            ]}
+          >
+            <Modal.Section>
+              <BlockStack gap="400">
+                <Text as="p">
+                  You&apos;ve enabled auto-fill for <strong>{enabledLabel}</strong>.
+                  Your catalog has products available to add to your Shopify store right now.
+                  Add them now, or come back to the Catalog page anytime.
+                </Text>
+                <Banner tone="warning">
+                  <Text as="p">
+                    ⚠ Adding products will use your plan&apos;s available slots.
+                    You can remove products individually from the Catalog page.
+                  </Text>
+                </Banner>
+              </BlockStack>
+            </Modal.Section>
+          </Modal>
+        );
+      })()}
     </BlockStack>
   );
 }
