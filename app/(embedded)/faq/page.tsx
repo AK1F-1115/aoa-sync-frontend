@@ -18,10 +18,144 @@ interface FaqItem {
   id: string;
   question: string;
   answer: React.ReactNode;
-  tag?: 'Pricing' | 'Catalog' | 'Shopify' | 'Sync';
+  tag?: 'Setup' | 'Pricing' | 'Catalog' | 'Shopify' | 'Sync';
 }
 
 const FAQ_ITEMS: FaqItem[] = [
+  // ── Getting started & setup ───────────────────────────────────────────────
+  {
+    id: 'what-is-aoa-sync',
+    tag: 'Setup',
+    question: 'What does AOA Traders Sync do?',
+    answer: (
+      <BlockStack gap="200">
+        <Text as="p">
+          AOA Traders Sync connects your Shopify store to the AOA Traders product catalog — a curated
+          wholesale catalog of warehouse and dropship products.
+        </Text>
+        <Text as="p">
+          With the app you can:
+        </Text>
+        <Text as="p">• <strong>Browse</strong> thousands of available products and push them into your Shopify store in one click</Text>
+        <Text as="p">• <strong>Auto-sync inventory</strong> — quantities in your store stay up to date with live AOA warehouse stock automatically</Text>
+        <Text as="p">• <strong>Auto-price</strong> — set a markup percentage once and your Shopify prices update whenever costs change, so you never sell at a loss</Text>
+        <Text as="p">• <strong>Manage your catalog</strong> — remove products, edit prices individually, and filter by type, brand, and category</Text>
+        <Text as="p">
+          You only pay for the slot plan that fits your catalog size. Products not in your plan slots are
+          still browsable in the Available to Add tab.
+        </Text>
+      </BlockStack>
+    ),
+  },
+  {
+    id: 'initial-setup',
+    tag: 'Setup',
+    question: 'What do I need to do when I first install the app?',
+    answer: (
+      <BlockStack gap="200">
+        <Text as="p">
+          After installing, complete these four steps before pushing your first products:
+        </Text>
+        <Text as="p">
+          <strong>1. Configure your markup (Settings → Markup)</strong><br />
+          Set the markup percentage AOA will use to calculate your selling price from the wholesale cost.
+          You can also switch to manual pricing here if you prefer to set prices yourself.
+        </Text>
+        <Text as="p">
+          <strong>2. Create Shopify Collections for your product types</strong><br />
+          We recommend creating at least two collections — one for Warehouse products and one for
+          Dropship products. When you push a product, add it to the relevant collection so customers
+          can browse by fulfillment type. Collections are managed in your Shopify Admin under
+          Products → Collections.
+        </Text>
+        <Text as="p">
+          <strong>3. Set up Shipping Profiles in Shopify</strong><br />
+          Warehouse and dropship products ship differently and need separate shipping profiles in
+          Shopify Admin (Settings → Shipping and delivery). Create a profile for warehouse products
+          (standard rates) and a separate one for dropship (supplier-fulfilled rates). AOA will
+          associate each product with the correct profile automatically based on its type.
+        </Text>
+        <Text as="p">
+          <strong>4. Push your first products (Products → Available to Add)</strong><br />
+          Browse the Available to Add tab, filter by brand or category, and click <strong>Add to Shopify</strong>
+          on the products you want. They'll appear in your My Shopify Catalog tab once pushed.
+        </Text>
+      </BlockStack>
+    ),
+  },
+  {
+    id: 'collections',
+    tag: 'Setup',
+    question: 'How should I set up Shopify Collections for AOA products?',
+    answer: (
+      <BlockStack gap="200">
+        <Text as="p">
+          Collections let customers browse your store by product type. For AOA products we recommend
+          the following structure:
+        </Text>
+        <Text as="p">• <strong>Warehouse Products</strong> — products fulfilled by the AOA warehouse (shown as "Warehouse" type in the catalog)</Text>
+        <Text as="p">• <strong>Dropship Products</strong> — products fulfilled directly by the supplier (shown as "Dropship" type)</Text>
+        <Text as="p">
+          You can also create collections by brand or category (e.g. "SUREFILL First Aid",
+          "BUNN Coffee Equipment") for a better shopping experience. Collections are created in
+          Shopify Admin under <strong>Products → Collections</strong>. After creating them,
+          assign pushed products to the relevant collection there.
+        </Text>
+        <Text as="p">
+          Tip: Shopify's automated collections can auto-assign products using a tag. When AOA pushes
+          a product it includes the product type ("Warehouse" or "Dropship") and brand as Shopify
+          product type and vendor fields, which you can use as automated collection conditions.
+        </Text>
+      </BlockStack>
+    ),
+  },
+  {
+    id: 'shipping-profiles',
+    tag: 'Setup',
+    question: 'How do shipping profiles work with AOA products?',
+    answer: (
+      <BlockStack gap="200">
+        <Text as="p">
+          Shopify shipping profiles control which shipping rates a customer sees at checkout depending
+          on which products are in their cart. Because warehouse and dropship products ship differently,
+          they need different profiles:
+        </Text>
+        <Text as="p">
+          <strong>Warehouse products</strong> are shipped from the AOA warehouse to the customer.
+          Set up standard carrier rates (e.g. UPS Ground, FedEx) or flat-rate shipping in this profile.
+        </Text>
+        <Text as="p">
+          <strong>Dropship products</strong> are shipped directly from the supplier. Rates may differ
+          by supplier — check your AOA account agreement for the applicable shipping rates and
+          configure them in the dropship profile.
+        </Text>
+        <Text as="p">
+          To create profiles: in Shopify Admin go to <strong>Settings → Shipping and delivery →
+          Create new profile</strong>. Add the relevant products to each profile.
+          Products pushed by AOA will appear in your Shopify product list and can be assigned to profiles there.
+        </Text>
+      </BlockStack>
+    ),
+  },
+  {
+    id: 'why-use-aoa',
+    tag: 'Setup',
+    question: 'Why should I use AOA Sync instead of managing products manually?',
+    answer: (
+      <BlockStack gap="200">
+        <Text as="p">
+          Managing a wholesale catalog manually is time-consuming and error-prone. AOA Sync automates
+          the parts that matter most:
+        </Text>
+        <Text as="p">• <strong>No overselling</strong> — inventory syncs automatically so your Shopify quantities reflect real AOA stock levels</Text>
+        <Text as="p">• <strong>No margin surprises</strong> — auto-pricing keeps your selling price above cost whenever AOA updates its wholesale prices</Text>
+        <Text as="p">• <strong>No manual product entry</strong> — product data (titles, descriptions, images, UPCs) comes directly from the AOA catalog; push in one click</Text>
+        <Text as="p">• <strong>MAP compliance</strong> — the app flags any product priced below the manufacturer's Minimum Advertised Price before it goes live</Text>
+        <Text as="p">• <strong>Scales with your catalog</strong> — manage tens to thousands of products with the same interface; upgrade your plan slot limit as you grow</Text>
+      </BlockStack>
+    ),
+  },
+
   // ── Catalog & counts ─────────────────────────────────────────────────────
   {
     id: 'variant-count',
@@ -221,7 +355,8 @@ const FAQ_ITEMS: FaqItem[] = [
   },
 ];
 
-const TAG_TONES: Record<string, 'info' | 'warning' | 'success' | 'attention'> = {
+const TAG_TONES: Record<string, 'info' | 'warning' | 'success' | 'attention' | 'new'> = {
+  Setup:   'new',
   Pricing: 'warning',
   Catalog: 'info',
   Shopify: 'success',
