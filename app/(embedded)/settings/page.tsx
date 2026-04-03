@@ -478,6 +478,10 @@ function MarkupTab() {
   const [autoFillModalOpen, setAutoFillModalOpen] = useState(false);
   const [autoFillNewlyEnabled, setAutoFillNewlyEnabled] = useState<{ retail: boolean; vds: boolean }>({ retail: false, vds: false });
 
+  // Slot sub-limit state (empty string = no cap)
+  const [localRetailCap, setLocalRetailCap] = useState('');
+  const [localVdsCap,    setLocalVdsCap]    = useState('');
+
   const {
     data: settings,
     isLoading,
@@ -498,6 +502,9 @@ function MarkupTab() {
       // Seed local auto-fill state from server (only on first load)
       setLocalPushRetail(settings.push_retail ?? false);
       setLocalPushVds(settings.push_vds ?? false);
+      // Seed slot caps
+      setLocalRetailCap(settings.retail_slot_cap != null ? String(settings.retail_slot_cap) : '');
+      setLocalVdsCap(settings.vds_slot_cap != null ? String(settings.vds_slot_cap) : '');
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [settings]);
@@ -532,6 +539,11 @@ function MarkupTab() {
         setAutoFillModalOpen(true);
       }
     },
+  });
+
+  const slotCapMutation = useMutation({
+    mutationFn: (body: { retail_slot_cap?: number; vds_slot_cap?: number }) => updateSettings(body),
+    onSuccess: () => { void queryClient.invalidateQueries({ queryKey: ['settings'] }); },
   });
 
   if (isLoading) return <Card><SkeletonBodyText lines={6} /></Card>;
@@ -742,6 +754,76 @@ function MarkupTab() {
           </InlineStack>
         </BlockStack>
       </Card>
+
+      {/* Per-type slot sub-limits (advanced) — only shown once settings are loaded */}
+      {settings != null && (
+        <Card>
+          <BlockStack gap="400">
+            <Text variant="headingMd" as="h2">Per-type Slot Limits (Advanced)</Text>
+            <Text as="p" tone="subdued">
+              Set a maximum number of SKUs that can be auto-filled per product type.
+              Leave blank to use your plan’s combined ceiling for both types.
+              Currently the backend does not support removing a cap once set — contact support if needed.
+            </Text>
+            <Divider />
+            <InlineStack gap="400">
+              <TextField
+                label="Retail (warehouse) cap"
+                type="number"
+                value={localRetailCap}
+                onChange={setLocalRetailCap}
+                min={1}
+                autoComplete="off"
+                helpText={`Current: ${settings.retail_slot_cap != null ? settings.retail_slot_cap.toLocaleString() : 'no limit'}`}
+                error={localRetailCap !== '' && (isNaN(parseInt(localRetailCap, 10)) || parseInt(localRetailCap, 10) < 1)
+                  ? 'Must be at least 1' : undefined}
+              />
+              <TextField
+                label="VDS (dropship) cap"
+                type="number"
+                value={localVdsCap}
+                onChange={setLocalVdsCap}
+                min={1}
+                autoComplete="off"
+                helpText={`Current: ${settings.vds_slot_cap != null ? settings.vds_slot_cap.toLocaleString() : 'no limit'}`}
+                error={localVdsCap !== '' && (isNaN(parseInt(localVdsCap, 10)) || parseInt(localVdsCap, 10) < 1)
+                  ? 'Must be at least 1' : undefined}
+              />
+            </InlineStack>
+            {slotCapMutation.isError && (
+              <Banner title="Could not save slot limits" tone="critical">
+                <Text as="p">
+                  {slotCapMutation.error instanceof ApiError
+                    ? slotCapMutation.error.message
+                    : 'An unexpected error occurred.'}
+                </Text>
+              </Banner>
+            )}
+            {slotCapMutation.isSuccess && (
+              <Banner title="Slot limits saved" tone="success" onDismiss={() => slotCapMutation.reset()}>
+                <Text as="p">Changes will take effect on the next sync run.</Text>
+              </Banner>
+            )}
+            <InlineStack>
+              <Button
+                variant="primary"
+                loading={slotCapMutation.isPending}
+                disabled={slotCapMutation.isPending || (localRetailCap === '' && localVdsCap === '')}
+                onClick={() => {
+                  const retail = localRetailCap !== '' ? parseInt(localRetailCap, 10) : undefined;
+                  const vds    = localVdsCap    !== '' ? parseInt(localVdsCap,    10) : undefined;
+                  slotCapMutation.mutate({
+                    ...(retail != null && !isNaN(retail) ? { retail_slot_cap: retail } : {}),
+                    ...(vds    != null && !isNaN(vds)    ? { vds_slot_cap:    vds    } : {}),
+                  });
+                }}
+              >
+                Save slot limits
+              </Button>
+            </InlineStack>
+          </BlockStack>
+        </Card>
+      )}
 
       {/* Post-save modal — shown only when a flag was newly enabled */}
       {(() => {

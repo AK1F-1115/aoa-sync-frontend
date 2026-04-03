@@ -180,6 +180,10 @@ export interface StoreSettingsResponse {
    * prices manually via PATCH /store/catalog/{sku}/price.
    */
   use_auto_pricing: boolean;
+  /** Max retail (warehouse) SKUs auto-filled per sync run. null = use plan ceiling. */
+  retail_slot_cap: number | null;
+  /** Max VDS (dropship) SKUs auto-filled per sync run. null = use plan ceiling. */
+  vds_slot_cap: number | null;
 }
 
 /** Request body for PATCH /store/settings — all fields optional */
@@ -201,6 +205,12 @@ export interface StoreSettingsUpdateRequest {
    * false = manual pricing mode; merchants set per-SKU prices.
    */
   use_auto_pricing?: boolean;
+  /**
+   * Per-type slot sub-limits (must be ≥ 1 and ≤ plan SKU limit).
+   * Omit to leave unchanged. Backend does not yet support clearing (setting to null) via PATCH.
+   */
+  retail_slot_cap?: number;
+  vds_slot_cap?: number;
 }
 
 /** Response from PATCH /store/settings */
@@ -516,6 +526,14 @@ export interface CatalogSummary {
   brands: { name: string; count: number }[];
   /** ISO timestamp of the most recent sync */
   last_sync_at: string | null;
+  /** Active push job snapshot — null when no job is running */
+  active_job: {
+    job_id: number;
+    total_retail_queued: number;
+    total_vds_queued: number;
+    total_pushed: number;
+    started_at: string;
+  } | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -532,10 +550,12 @@ export interface PushCatalogResponse {
   ok: boolean;
   /**
    * True when push_all was accepted as a background job (HTTP 202).
-   * The sync runs server-side; poll /store/catalog/summary for progress.
+   * The sync runs server-side; poll /store/catalog/push/status for progress.
    * Undefined / false for specific-SKU pushes which are still synchronous.
    */
   job_started?: boolean;
+  /** Job ID assigned to the background push_all job — use to poll status or cancel */
+  job_id?: number;
   /** Number pushed — only present for synchronous specific-SKU pushes */
   pushed?: number;
   failed?: number;
@@ -553,6 +573,33 @@ export interface PlanLimitExceededDetail {
   slots_total: number;
   slots_remaining: number;
   requested: number;
+}
+
+/** 409 top-level body when a push_all job is already running */
+export interface PushAlreadyRunningDetail {
+  error: 'push_already_running';
+  job_id: number;
+  started_at: string;
+  total_pushed: number;
+}
+
+/** Response from GET /store/catalog/push/status */
+export type PushStatusResponse =
+  | { running: false; job_id: null }
+  | {
+      running: true;
+      job_id: number;
+      total_retail_queued: number;
+      total_vds_queued: number;
+      total_pushed: number;
+      started_at: string;
+    };
+
+/** Response from DELETE /store/catalog/job/cancel */
+export interface CancelJobResponse {
+  ok: boolean;
+  job_id: number;
+  message: string;
 }
 
 /** Request body for DELETE /store/catalog/remove */

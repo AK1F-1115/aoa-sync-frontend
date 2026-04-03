@@ -29,10 +29,10 @@ import {
   Modal,
 } from '@shopify/polaris';
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
-import { getCatalog, getCatalogSummary, pushCatalog, removeCatalog, patchProductPrice } from '@/lib/api/products';
+import { getCatalog, getCatalogSummary, getPushStatus, cancelPushJob, pushCatalog, removeCatalog, patchProductPrice } from '@/lib/api/products';
 import { getSettings } from '@/lib/api/settings';
 import { ApiError } from '@/lib/api/client';
-import type { CatalogProduct, CatalogSummary, CatalogParams, PlanLimitExceededDetail, RemoveCatalogRequest } from '@/types/api';
+import type { CatalogProduct, CatalogSummary, CatalogParams, PlanLimitExceededDetail, PushAlreadyRunningDetail, RemoveCatalogRequest } from '@/types/api';
 import { useWatchlist } from '@/lib/hooks/useWatchlist';
 import type { WatchlistEntry } from '@/lib/hooks/useWatchlist';
 
@@ -2117,20 +2117,23 @@ function WatchlistTab({
 
 const PUSH_PROGRESS_KEY = 'aoa_push_in_progress';
 
+type AlreadyRunningInfo = { jobId: number; startedAt: string; totalPushed: number };
+
 function usePushAllProgress(summary: CatalogSummary | undefined) {
   const queryClient = useQueryClient();
-  const [isSyncing, setIsSyncing]   = useState(false);
-  const [liveCount, setLiveCount]   = useState<number | null>(null);
-  const [error, setError]           = useState<string | null>(null);
-  const [pushToast, setPushToast]   = useState<{ message: string; tone: 'success' | 'warning' | 'info' } | null>(null);
+  const [isSyncing, setIsSyncing]           = useState(false);
+  const [liveCount, setLiveCount]           = useState<number | null>(null);
+  const [totalQueued, setTotalQueued]       = useState<number | null>(null);
+  const [error, setError]                   = useState<string | null>(null);
+  const [alreadyRunning, setAlreadyRunning] = useState<AlreadyRunningInfo | null>(null);
+  const [isCancelling, setIsCancelling]     = useState(false);
+  const [pushToast, setPushToast]           = useState<{ message: string; tone: 'success' | 'warning' | 'info' } | null>(null);
 
-  const pollIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stableCountRef   = useRef(0);
-  const lastActiveRef    = useRef(0);
-  const initialActiveRef = useRef(0);
-  const liveActiveRef    = useRef<number | null>(null);
+  const pollIntervalRef    = useRef<ReturnType<typeof setInterval> | null>(null);
+  const jobIdRef           = useRef<number | null>(null);
+  const initialActiveRef   = useRef(0);
+  const lastTotalPushedRef = useRef(0);
   // Synchronous lock — set before mutation.mutate() fires, checked before React can re-render.
-  // Prevents a rapid double-click or two events on the same frame from queuing two server jobs.
   const triggeredRef = useRef(false);
 
   const stopPolling = useCallback(() => {
@@ -2140,64 +2143,80 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
     }
   }, []);
 
-  const finishSync = useCallback((currentCount: number) => {
+  const finishSync = useCallback((totalPushed: number) => {
     stopPolling();
     setIsSyncing(false);
+    setAlreadyRunning(null);
+    setIsCancelling(false);
     triggeredRef.current = false;
+    jobIdRef.current = null;
     sessionStorage.removeItem(PUSH_PROGRESS_KEY);
-    const delta = currentCount - initialActiveRef.current;
     setPushToast({
-      message: delta > 0
-        ? `✅ Done — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added to your store`
-        : 'No new products were added',
-      tone: delta > 0 ? 'success' : 'info',
+      message: totalPushed > 0
+        ? `✅ Done — ${totalPushed.toLocaleString()} product${totalPushed !== 1 ? 's' : ''} added to your store`
+        : 'Push complete — no new products were added',
+      tone: totalPushed > 0 ? 'success' : 'info',
     });
     void queryClient.invalidateQueries({ queryKey: ['catalog'] });
     void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
   }, [stopPolling, queryClient]);
 
-  const startPolling = useCallback(() => {
-    stableCountRef.current = 0;
-    lastActiveRef.current  = liveActiveRef.current ?? initialActiveRef.current;
+  const startStatusPolling = useCallback(() => {
+    stopPolling();
     pollIntervalRef.current = setInterval(async () => {
       try {
-        const s = await getCatalogSummary();
-        const c = s.total_active ?? 0;
-        liveActiveRef.current = c;
-        setLiveCount(c);
-        queryClient.setQueryData(['catalogSummary'], s);
-        if (c === lastActiveRef.current) {
-          stableCountRef.current++;
-          if (stableCountRef.current >= 3) finishSync(c);
-        } else {
-          stableCountRef.current = 0;
-          lastActiveRef.current  = c;
+        const status = await getPushStatus();
+        if (!status.running) {
+          finishSync(lastTotalPushedRef.current);
+          return;
         }
-      } catch { /* ignore */ }
-    }, 3_000);
-  }, [queryClient, finishSync]);
+        lastTotalPushedRef.current = status.total_pushed;
+        setLiveCount(status.total_pushed);
+        setTotalQueued(status.total_retail_queued + status.total_vds_queued);
+      } catch { /* network error — retry on next tick */ }
+    }, 5_000);
+  }, [stopPolling, finishSync]);
 
-  // On mount: resume polling if a push was started before navigating away
+  // Mount effect: resume from sessionStorage (available before summary loads)
   useEffect(() => {
     const stored = sessionStorage.getItem(PUSH_PROGRESS_KEY);
     if (!stored) return;
     try {
-      const { initialCount, startedAt } = JSON.parse(stored) as { initialCount: number; startedAt: string };
+      const { initialCount, startedAt, jobId } = JSON.parse(stored) as {
+        initialCount: number; startedAt: string; jobId: number | null;
+      };
       const ageMs = Date.now() - new Date(startedAt).getTime();
       if (ageMs > 15 * 60_000) { sessionStorage.removeItem(PUSH_PROGRESS_KEY); return; }
       initialActiveRef.current = initialCount;
-      liveActiveRef.current    = null;
+      jobIdRef.current = jobId ?? null;
       setIsSyncing(true);
-      startPolling();
+      startStatusPolling();
     } catch { sessionStorage.removeItem(PUSH_PROGRESS_KEY); }
     return () => stopPolling();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  // When summary first loads: if there's an active_job and we're not already tracking it, attach
+  const hasAutoDetectedRef = useRef(false);
+  useEffect(() => {
+    if (hasAutoDetectedRef.current) return;
+    if (!summary?.active_job) return;
+    if (sessionStorage.getItem(PUSH_PROGRESS_KEY)) return; // already resuming from sessionStorage
+    hasAutoDetectedRef.current = true;
+    const { job_id, total_pushed, total_retail_queued, total_vds_queued } = summary.active_job;
+    jobIdRef.current = job_id;
+    lastTotalPushedRef.current = total_pushed;
+    setIsSyncing(true);
+    setLiveCount(total_pushed);
+    setTotalQueued(total_retail_queued + total_vds_queued);
+    startStatusPolling();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [summary?.active_job]);
+
   // Cleanup on unmount
   useEffect(() => () => stopPolling(), [stopPolling]);
 
-  // Auto-dismiss success/info toast after 6 s
+  // Auto-dismiss toast after 6 s
   useEffect(() => {
     if (!pushToast) return;
     const t = setTimeout(() => setPushToast(null), 6_000);
@@ -2209,31 +2228,52 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
     onMutate: () => {
       const initial = summary?.total_active ?? 0;
       initialActiveRef.current = initial;
-      liveActiveRef.current    = initial;
-      setLiveCount(initial);
+      lastTotalPushedRef.current = 0;
+      setLiveCount(0);
+      setTotalQueued(null);
       setIsSyncing(true);
       setError(null);
       sessionStorage.setItem(
         PUSH_PROGRESS_KEY,
-        JSON.stringify({ initialCount: initial, startedAt: new Date().toISOString() }),
+        JSON.stringify({ initialCount: initial, startedAt: new Date().toISOString(), jobId: null }),
       );
-      // Keep liveCount fresh while the 30-s request is in-flight
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const s = await getCatalogSummary();
-          const c = s.total_active ?? 0;
-          liveActiveRef.current = c;
-          setLiveCount(c);
-          queryClient.setQueryData(['catalogSummary'], s);
-        } catch { /* ignore */ }
-      }, 3_000);
     },
     onSuccess: (result) => {
-      stopPolling(); // stop fast poll
-      if (!result.job_started) { finishSync(liveActiveRef.current ?? initialActiveRef.current); return; }
-      startPolling(); // stable-detection polling
+      if (result.job_id) {
+        jobIdRef.current = result.job_id;
+        try {
+          const stored = sessionStorage.getItem(PUSH_PROGRESS_KEY);
+          if (stored) {
+            const parsed = JSON.parse(stored) as Record<string, unknown>;
+            sessionStorage.setItem(PUSH_PROGRESS_KEY, JSON.stringify({ ...parsed, jobId: result.job_id }));
+          }
+        } catch { /* ignore */ }
+      }
+      if (!result.job_started) { finishSync(result.pushed ?? 0); return; }
+      startStatusPolling();
     },
     onError: (err) => {
+      if (err instanceof ApiError && err.status === 409) {
+        // Another push job is already running — attach to it and show a warning
+        const detail = err.detail as Partial<PushAlreadyRunningDetail> | undefined;
+        triggeredRef.current = false;
+        sessionStorage.removeItem(PUSH_PROGRESS_KEY);
+        if (detail?.job_id) {
+          jobIdRef.current = detail.job_id;
+          lastTotalPushedRef.current = detail.total_pushed ?? 0;
+          setLiveCount(detail.total_pushed ?? null);
+          setAlreadyRunning({
+            jobId: detail.job_id,
+            startedAt: detail.started_at ?? '',
+            totalPushed: detail.total_pushed ?? 0,
+          });
+          startStatusPolling();
+        } else {
+          setIsSyncing(false);
+          setError('A push job is already running. Wait for it to finish or refresh the page.');
+        }
+        return;
+      }
       if (err instanceof ApiError && err.status === 400) {
         const detail = parsePlanLimitDetail(err);
         stopPolling();
@@ -2243,45 +2283,91 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
         setError(
           detail
             ? `Your plan limit was reached.${detail.slots_used != null ? ` ${detail.slots_used.toLocaleString()} products were added.` : ''}`
-            : (err as ApiError).message || 'An unexpected error occurred.',
+            : err.message || 'An unexpected error occurred.',
         );
         return;
       }
-      // Network / timeout / 5xx — server job likely still running; keep syncing + stable-detection poll
-      stopPolling();
-      startPolling();
+      // Network / timeout / 5xx — server job is likely running; switch to status polling
+      startStatusPolling();
     },
+  });
+
+  const cancelMutation = useMutation({
+    mutationFn: cancelPushJob,
+    onMutate: () => setIsCancelling(true),
+    onError: () => {
+      // 404 = no job running (already finished before cancel reached it)
+      finishSync(lastTotalPushedRef.current);
+    },
+    // onSuccess: keep status polling — backend takes up to ~30 s to drain in-flight work
   });
 
   return {
     isSyncing,
     isPending: mutation.isPending,
     liveCount,
+    totalQueued,
     error,
+    alreadyRunning,
+    isCancelling,
     pushToast,
     setPushToast,
     startPushAll: () => {
       if (triggeredRef.current || mutation.isPending) return; // synchronous lock
       triggeredRef.current = true;
       setError(null);
+      setAlreadyRunning(null);
       mutation.mutate();
     },
-    clearError:   () => setError(null),
+    cancelPushAll: () => cancelMutation.mutate(),
+    clearError:    () => setError(null),
   };
 }
 
 function PushProgressBanner({
   isSyncing,
   liveCount,
+  totalQueued,
+  alreadyRunning,
+  isCancelling,
+  onCancel,
   pushToast,
   setPushToast,
 }: {
   isSyncing: boolean;
   liveCount: number | null;
+  totalQueued: number | null;
+  alreadyRunning: AlreadyRunningInfo | null;
+  isCancelling: boolean;
+  onCancel: () => void;
   pushToast: { message: string; tone: 'success' | 'warning' | 'info' } | null;
   setPushToast: (v: null) => void;
 }) {
   if (!isSyncing && !pushToast) return null;
+
+  const progressPct =
+    totalQueued != null && totalQueued > 0 && liveCount != null
+      ? Math.min(100, Math.round((liveCount / totalQueued) * 100))
+      : 0;
+
+  const progressText =
+    liveCount != null && totalQueued != null
+      ? `${liveCount.toLocaleString()} of ${totalQueued.toLocaleString()} products added`
+      : liveCount != null
+      ? `${liveCount.toLocaleString()} products added so far…`
+      : 'Starting…';
+
+  const cancelButton = isCancelling ? (
+    <InlineStack gap="200" blockAlign="center">
+      <Spinner size="small" />
+      <Text as="p" tone="subdued">Cancelling push…</Text>
+    </InlineStack>
+  ) : (
+    <Button variant="secondary" tone="critical" size="slim" onClick={onCancel}>
+      Cancel push
+    </Button>
+  );
+
   return (
     <Box paddingBlockEnd="400">
       <BlockStack gap="200">
@@ -2290,14 +2376,44 @@ function PushProgressBanner({
             <Text as="p">{pushToast.message}</Text>
           </Banner>
         )}
-        {isSyncing && (
-          <Banner title="Adding products to your store…" tone="info">
-            <InlineStack gap="200" blockAlign="center">
-              <Spinner size="small" />
+        {isSyncing && alreadyRunning && (
+          <Banner title={`Push already in progress — Job #${alreadyRunning.jobId}`} tone="warning">
+            <BlockStack gap="300">
               <Text as="p">
-                {liveCount != null ? `${liveCount.toLocaleString()} in Shopify so far…` : 'Starting…'}
+                A push started{alreadyRunning.startedAt
+                  ? ` at ${new Date(alreadyRunning.startedAt).toLocaleTimeString()}`
+                  : ''}
+                {alreadyRunning.totalPushed > 0
+                  ? ` has added ${alreadyRunning.totalPushed.toLocaleString()} products so far.`
+                  : ' is running.'}
+                {' '}Tracking its progress below.
               </Text>
-            </InlineStack>
+              {liveCount != null && totalQueued != null && totalQueued > 0 && (
+                <BlockStack gap="100">
+                  <Text as="p" tone="subdued" variant="bodySm">{progressText}</Text>
+                  <ProgressBar progress={progressPct} size="small" />
+                </BlockStack>
+              )}
+              {cancelButton}
+            </BlockStack>
+          </Banner>
+        )}
+        {isSyncing && !alreadyRunning && (
+          <Banner title="Adding products to your store…" tone="info">
+            <BlockStack gap="200">
+              {liveCount != null && totalQueued != null && totalQueued > 0 ? (
+                <BlockStack gap="100">
+                  <Text as="p">{progressText}</Text>
+                  <ProgressBar progress={progressPct} size="small" />
+                </BlockStack>
+              ) : (
+                <InlineStack gap="200" blockAlign="center">
+                  <Spinner size="small" />
+                  <Text as="p">{progressText}</Text>
+                </InlineStack>
+              )}
+              {cancelButton}
+            </BlockStack>
           </Banner>
         )}
       </BlockStack>
@@ -2393,14 +2509,18 @@ export default function ProductsPage() {
 
   // Push-all progress lives here so it survives tab switches
   const {
-    isSyncing: pushAllIsSyncing,
-    isPending: pushAllIsPending,
-    liveCount: pushAllLiveCount,
-    error:     pushAllError,
+    isSyncing:      pushAllIsSyncing,
+    isPending:      pushAllIsPending,
+    liveCount:      pushAllLiveCount,
+    totalQueued:    pushAllTotalQueued,
+    error:          pushAllError,
+    alreadyRunning: pushAllAlreadyRunning,
+    isCancelling:   pushAllIsCancelling,
     pushToast,
     setPushToast,
     startPushAll,
-    clearError:  clearPushAllError,
+    cancelPushAll,
+    clearError:     clearPushAllError,
   } = usePushAllProgress(summary);
 
   if (summaryLoading && !summary) {
@@ -2428,6 +2548,10 @@ export default function ProductsPage() {
       <PushProgressBanner
         isSyncing={pushAllIsSyncing}
         liveCount={pushAllLiveCount}
+        totalQueued={pushAllTotalQueued}
+        alreadyRunning={pushAllAlreadyRunning}
+        isCancelling={pushAllIsCancelling}
+        onCancel={cancelPushAll}
         pushToast={pushToast}
         setPushToast={setPushToast}
       />

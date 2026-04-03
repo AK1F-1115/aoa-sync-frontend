@@ -83,6 +83,9 @@ export async function apiFetch<T>(
         // Legacy / custom fields
         message?: string;
         code?: string;
+        // Top-level error code (e.g. push_already_running 409)
+        error?: string;
+        [key: string]: unknown;
       };
       // FastAPI default: { detail: "message" } or { detail: [{msg: "..."}] }
       if (typeof body.detail === 'string') {
@@ -97,8 +100,13 @@ export async function apiFetch<T>(
         else if (typeof d.error === 'string') message = d.error;
       } else if (body.message) {
         message = body.message;
+      } else if (typeof body.error === 'string') {
+        // Top-level { error: "code_string", ... } — e.g. 409 push_already_running
+        message = body.error;
+        code = body.error;
+        rawDetail = body; // preserve full body so callers can access job_id, started_at, etc.
       }
-      if (body.code) code = body.code;
+      if (body.code) code = body.code; // explicit code field takes priority over error-as-code
     } catch {
       // Body was not JSON — use status text
     }
@@ -148,6 +156,8 @@ export async function apiFetchPublic<T>(
         detail?: string | { msg: string }[] | Record<string, unknown>;
         message?: string;
         code?: string;
+        error?: string;
+        [key: string]: unknown;
       };
       if (typeof body.detail === 'string') {
         message = body.detail;
@@ -160,6 +170,10 @@ export async function apiFetchPublic<T>(
         else if (typeof d.error === 'string') message = d.error;
       } else if (body.message) {
         message = body.message;
+      } else if (typeof body.error === 'string') {
+        message = body.error;
+        code = body.error;
+        rawDetail = body;
       }
       if (body.code) code = body.code;
     } catch {

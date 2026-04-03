@@ -21,6 +21,8 @@ import type {
   ProductDetailResponse,
   PushCatalogRequest,
   PushCatalogResponse,
+  PushStatusResponse,
+  CancelJobResponse,
   RemoveCatalogRequest,
   RemoveCatalogResponse,
   PriceUpdateRequest,
@@ -80,16 +82,12 @@ export async function getCatalog(
  * Pass { skus: [...] } to push specific products, or { push_all: true }
  * to fill all remaining plan slots automatically.
  *
- * push_all now returns HTTP 202 immediately (job runs server-side).
- * Specific-SKU pushes remain synchronous and return 200.
+ * push_all responses:
+ *   202 + { ok, job_started: true, job_id } — background job accepted; poll /store/catalog/push/status
+ *   409 + { error: 'push_already_running', job_id, total_pushed } — job already in progress
+ *   400 + plan_limit_exceeded detail — plan is full
  *
- * We set a 30-second AbortSignal timeout — long enough to receive the 202
- * even on a slow connection, but short enough to fall back to background
- * polling quickly if the network stalls.
- *
- * Rate limited to 5 calls/minute — handle 429 with a cooldown message.
- * On plan limit exceeded, the backend returns 400 with
- * { detail: { error: "plan_limit_exceeded", slots_remaining, ... } }.
+ * Specific-SKU pushes remain synchronous (200) and allow 3 min for large selections.
  */
 export async function pushCatalog(
   request: PushCatalogRequest
@@ -157,4 +155,26 @@ export async function patchProductPrice(
     `/store/catalog/${encodeURIComponent(sku)}/price`,
     { method: 'PATCH', body: JSON.stringify(body) }
   );
+}
+
+/**
+ * Poll the live status of the current push_all background job.
+ *
+ * Returns { running: false } when idle, or full job progress when active.
+ * Recommended poll interval: 5 seconds while running.
+ */
+export async function getPushStatus(): Promise<PushStatusResponse> {
+  return apiFetch<PushStatusResponse>('/store/catalog/push/status');
+}
+
+/**
+ * Cancel the running push_all background job for this store.
+ *
+ * After calling, continue polling getPushStatus() until running: false
+ * (≈ 10–30 seconds to drain in-flight work). Then refresh slot counts.
+ *
+ * 404 = no job running (treat as already stopped).
+ */
+export async function cancelPushJob(): Promise<CancelJobResponse> {
+  return apiFetch<CancelJobResponse>('/store/catalog/job/cancel', { method: 'DELETE' });
 }
