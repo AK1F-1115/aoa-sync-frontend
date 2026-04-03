@@ -114,8 +114,10 @@ export async function pushCatalog(
   request: PushCatalogRequest
 ): Promise<PushCatalogResponse> {
   const controller = new AbortController();
-  // 30 seconds — enough to receive the 202 acknowledgement; fall back to background polling if exceeded
-  const timeoutId = setTimeout(() => controller.abort(), 30_000);
+  // push_all returns HTTP 202 immediately, so 30s is plenty.
+  // Specific-SKU pushes are synchronous (1 Shopify call/product) so allow 3 min for large selections.
+  const timeoutMs = 'push_all' in request && request.push_all ? 30_000 : 3 * 60_000;
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   try {
     return await apiFetch<PushCatalogResponse>('/store/catalog/push', {
       method: 'POST',

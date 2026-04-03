@@ -4,13 +4,9 @@
  * Server-side proxy for GET /store/catalog/summary.
  *
  * Why this exists:
- * The backend /store/catalog/summary endpoint is missing the
- * Access-Control-Allow-Origin header, so browsers block the direct
- * fetch from app.aoatraders.com. This Next.js route proxies the request
- * server-side (no CORS restriction) and forwards the response.
- *
- * The client sends its Shopify session token as Authorization: Bearer <token>;
- * this proxy forwards it unchanged to the backend so the store is identified.
+ * The backend /store/catalog/summary endpoint was missing CORS headers,
+ * so this proxies the request server-side. Now kept as the primary path
+ * to ensure consistent behaviour regardless of browser CORS policy.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -24,25 +20,33 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ detail: 'Missing Authorization header' }, { status: 401 });
   }
 
+  let upstream: Response;
   try {
-    const upstream = await fetch(`${API_BASE}/store/catalog/summary`, {
+    upstream = await fetch(`${API_BASE}/store/catalog/summary`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
         Authorization: authHeader,
       },
-      // Don't cache — summary should reflect real-time counts
       cache: 'no-store',
     });
-
-    const body: unknown = await upstream.json();
-
-    return NextResponse.json(body, { status: upstream.status });
   } catch (err) {
-    console.error('[AOA proxy] /store/catalog/summary upstream error:', err);
+    console.error('[AOA proxy] /store/catalog/summary fetch failed:', err);
+    return NextResponse.json({ detail: 'Upstream request failed' }, { status: 502 });
+  }
+
+  // Forward non-JSON error responses with their status code so the client
+  // can surface a meaningful error rather than a JSON parse exception.
+  const contentType = upstream.headers.get('content-type') ?? '';
+  if (!contentType.includes('application/json')) {
+    const text = await upstream.text().catch(() => '(empty body)');
+    console.error(`[AOA proxy] unexpected content-type "${contentType}" from upstream:`, text);
     return NextResponse.json(
-      { detail: 'Upstream request failed' },
-      { status: 502 }
+      { detail: `Upstream returned non-JSON response (${upstream.status})` },
+      { status: upstream.status === 200 ? 502 : upstream.status }
     );
   }
+
+  const body: unknown = await upstream.json();
+  return NextResponse.json(body, { status: upstream.status });
 }

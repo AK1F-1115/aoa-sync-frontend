@@ -2003,15 +2003,20 @@ function AvailableCatalogTab({
         </Banner>
       )}
 
-      {pushMutation.isSuccess && (
-        <Banner
-          title={`${pushMutation.data.pushed} product${pushMutation.data.pushed !== 1 ? 's' : ''} added to Shopify`}
-          tone="success"
-          onDismiss={() => pushMutation.reset()}
-        >
-          <Text as="p">{`${pushMutation.data.slots_remaining ?? '\u2014'} slots remaining.`}</Text>
-        </Banner>
-      )}
+      {pushMutation.isSuccess && (() => {
+        const pushed = pushMutation.data.pushed ?? 0;
+        return (
+          <Banner
+            title={pushed > 0
+              ? `${pushed} product${pushed !== 1 ? 's' : ''} added to Shopify`
+              : 'Products added to Shopify'}
+            tone="success"
+            onDismiss={() => pushMutation.reset()}
+          >
+            <Text as="p">{`${pushMutation.data.slots_remaining ?? '—'} slots remaining.`}</Text>
+          </Banner>
+        );
+      })()}
 
       {atLimit && (
         <Banner title="You've reached your plan limit" tone="warning">
