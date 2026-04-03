@@ -42,9 +42,9 @@ const PAGE_SIZE = 25;
 // Helpers
 // ---------------------------------------------------------------------------
 
-function formatPrice(price: string | null): string {
-  if (!price) return '—';
-  const n = parseFloat(price);
+function formatPrice(price: string | number | null): string {
+  if (price === null || price === undefined || price === '') return '—';
+  const n = typeof price === 'number' ? price : parseFloat(price);
   return isNaN(n) ? '—' : `$${n.toFixed(2)}`;
 }
 
@@ -2121,8 +2121,8 @@ function AvailableCatalogTab({
                         sku,
                         name:          group[0].product_name,
                         image_url:     group[0].image_url,
-                        merchant_cost: group[0].merchant_cost,
-                        list_price:    group[0].list_price,
+                        merchant_cost: group[0].merchant_cost ? parseFloat(group[0].merchant_cost) : null,
+                        list_price:    group[0].list_price    ? parseFloat(group[0].list_price)    : null,
                         brand:         group[0].brand,
                         category:      group[0].category_1,
                       })}

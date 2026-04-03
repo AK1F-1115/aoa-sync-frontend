@@ -604,11 +604,16 @@ export interface PriceUpdateResponse {
  * The backend stores one row per (store_id, sku) pair.
  */
 export interface WishlistItem {
+  /** Internal DB row id — not used by the frontend but preserved for reference */
+  id?: number;
+  store_id?: number;
   sku: string;
   name: string | null;
   image_url: string | null;
-  merchant_cost: string | null;
-  list_price: string | null;
+  /** AOA cost in USD — returned as a float by the backend */
+  merchant_cost: number | null;
+  /** Shopify list price in USD — returned as a float by the backend */
+  list_price: number | null;
   brand: string | null;
   category: string | null;
   /** ISO 8601 timestamp when the item was saved */
@@ -623,15 +628,18 @@ export interface WishlistResponse {
 /**
  * Request body for POST /store/wishlist.
  * Backend infers store_id from the session token.
+ * All fields except sku are optional.
  */
 export interface WishlistAddRequest {
   sku: string;
-  name: string | null;
-  image_url: string | null;
-  merchant_cost: string | null;
-  list_price: string | null;
-  brand: string | null;
-  category: string | null;
+  name?: string | null;
+  image_url?: string | null;
+  /** AOA cost in USD — send as a float, not a string */
+  merchant_cost?: number | null;
+  /** Shopify list price in USD — send as a float, not a string */
+  list_price?: number | null;
+  brand?: string | null;
+  category?: string | null;
 }
 
 /** Response from POST /store/wishlist */
@@ -643,4 +651,6 @@ export interface WishlistAddResponse {
 /** Response from DELETE /store/wishlist/{sku} and DELETE /store/wishlist */
 export interface WishlistRemoveResponse {
   ok: boolean;
+  /** Number of items deleted — present on clear-all, 0 if wishlist was already empty */
+  removed?: number;
 }
