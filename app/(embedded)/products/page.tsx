@@ -279,7 +279,7 @@ function FilterBar({
         <TextField
           label="Search products"
           labelHidden
-          placeholder="Search by name, SKU, brand, or category..."
+          placeholder="Search by product name, SKU, or UPC..."
           value={searchValue}
           onChange={onSearchChange}
           clearButton
