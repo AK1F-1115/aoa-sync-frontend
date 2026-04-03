@@ -33,6 +33,8 @@ import { getCatalog, getCatalogSummary, pushCatalog, removeCatalog, patchProduct
 import { getSettings } from '@/lib/api/settings';
 import { ApiError } from '@/lib/api/client';
 import type { CatalogProduct, CatalogSummary, CatalogParams, PlanLimitExceededDetail, RemoveCatalogRequest } from '@/types/api';
+import { useWatchlist } from '@/lib/hooks/useWatchlist';
+import type { WatchlistEntry } from '@/lib/hooks/useWatchlist';
 
 const PAGE_SIZE = 25;
 
@@ -1483,41 +1485,55 @@ function AvailableCatalogTab({
   summary,
   showPushAllBanner,
   onDismissPushAllBanner,
+  isInWatchlist,
+  onToggleWatchlist,
 }: {
   summary: CatalogSummary | undefined;
   showPushAllBanner?: boolean;
   onDismissPushAllBanner?: () => void;
+  isInWatchlist: (sku: string) => boolean;
+  onToggleWatchlist: (entry: Omit<WatchlistEntry, 'added_at'>) => void;
 }) {
   const queryClient = useQueryClient();
-  const [page, setPage] = useState(1);
-  const [searchValue, setSearchValue] = useState('');
-  const [debouncedSearch, setDebouncedSearch] = useState('');
-  const [supplierFilter, setSupplierFilter] = useState('');
-  const [categoryFilter, setCategoryFilter] = useState('');
-  const [brandFilter, setBrandFilter] = useState('');
+
+  // ── Read initial filter state from URL (preserves state on browser back) ──
+  const readUrl = (): URLSearchParams => {
+    if (typeof window === 'undefined') return new URLSearchParams();
+    return new URLSearchParams(window.location.search);
+  };
+
+  const [page, setPage] = useState(() => parseInt(readUrl().get('page') ?? '1', 10) || 1);
+  const [searchValue, setSearchValue] = useState(() => readUrl().get('search') ?? '');
+  const [debouncedSearch, setDebouncedSearch] = useState(() => readUrl().get('search') ?? '');
+  const [supplierFilter, setSupplierFilter] = useState(() => readUrl().get('supplier') ?? '');
+  const [categoryFilter, setCategoryFilter] = useState(() => readUrl().get('category') ?? '');
+  const [brandFilter, setBrandFilter] = useState(() => readUrl().get('brand') ?? '');
   const [pushError, setPushError] = useState<string | null>(null);
 
-  // Research filters
-  const [minCost, setMinCost] = useState('');
-  const [maxCost, setMaxCost] = useState('');
-  const [minListPrice, setMinListPrice] = useState('');
-  const [maxListPrice, setMaxListPrice] = useState('');
-  const [minQty, setMinQty] = useState('');
-  const [maxQty, setMaxQty] = useState('');
-  const [minMargin, setMinMargin] = useState('');
-  const [inStockOnly, setInStockOnly] = useState(false);
-  const [sortBy, setSortBy] = useState('');
-  const [sortDir, setSortDir] = useState<'asc' | 'desc'>('desc');
-  const [tagFilters, setTagFilters] = useState<string[]>([]);
-  const [marketplaceClear, setMarketplaceClear] = useState(false);
+  // Research filters — also restored from URL on mount
+  const [minCost, setMinCost] = useState(() => readUrl().get('min_cost') ?? '');
+  const [maxCost, setMaxCost] = useState(() => readUrl().get('max_cost') ?? '');
+  const [minListPrice, setMinListPrice] = useState(() => readUrl().get('min_list') ?? '');
+  const [maxListPrice, setMaxListPrice] = useState(() => readUrl().get('max_list') ?? '');
+  const [minQty, setMinQty] = useState(() => readUrl().get('min_qty') ?? '');
+  const [maxQty, setMaxQty] = useState(() => readUrl().get('max_qty') ?? '');
+  const [minMargin, setMinMargin] = useState(() => readUrl().get('min_margin') ?? '');
+  const [inStockOnly, setInStockOnly] = useState(() => readUrl().get('in_stock') === 'true');
+  const [sortBy, setSortBy] = useState(() => readUrl().get('sort_by') ?? '');
+  const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => (readUrl().get('sort_dir') ?? 'desc') as 'asc' | 'desc');
+  const [tagFilters, setTagFilters] = useState<string[]>(() => {
+    const tags = readUrl().get('tags');
+    return tags ? tags.split(',').filter(Boolean) : [];
+  });
+  const [marketplaceClear, setMarketplaceClear] = useState(() => readUrl().get('mkt_clear') === 'true');
 
-  // Debounced price/qty fields (600ms — longer than search to avoid rapid calls while typing)
-  const [dMinCost, setDMinCost] = useState('');
-  const [dMaxCost, setDMaxCost] = useState('');
-  const [dMinList, setDMinList] = useState('');
-  const [dMaxList, setDMaxList] = useState('');
-  const [dMinQty, setDMinQty] = useState('');
-  const [dMaxQty, setDMaxQty] = useState('');
+  // Debounced price/qty fields — initialised from URL directly (no debounce on first load)
+  const [dMinCost, setDMinCost] = useState(() => readUrl().get('min_cost') ?? '');
+  const [dMaxCost, setDMaxCost] = useState(() => readUrl().get('max_cost') ?? '');
+  const [dMinList, setDMinList] = useState(() => readUrl().get('min_list') ?? '');
+  const [dMaxList, setDMaxList] = useState(() => readUrl().get('max_list') ?? '');
+  const [dMinQty, setDMinQty] = useState(() => readUrl().get('min_qty') ?? '');
+  const [dMaxQty, setDMaxQty] = useState(() => readUrl().get('max_qty') ?? '');
 
   useEffect(() => {
     const t = setTimeout(() => { setDebouncedSearch(searchValue); setPage(1); }, 400);
@@ -1533,6 +1549,35 @@ function AvailableCatalogTab({
     }, 600);
     return () => clearTimeout(t);
   }, [minCost, maxCost, minListPrice, maxListPrice, minQty, maxQty]);
+
+  // ── Sync all filter state → URL (replaceState so browser Back restores it) ──
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const sp = url.searchParams;
+    sp.set('tab', 'available');
+    if (searchValue)         sp.set('search',     searchValue);     else sp.delete('search');
+    if (supplierFilter)      sp.set('supplier',   supplierFilter);  else sp.delete('supplier');
+    if (categoryFilter)      sp.set('category',   categoryFilter);  else sp.delete('category');
+    if (brandFilter)         sp.set('brand',      brandFilter);     else sp.delete('brand');
+    if (minCost)             sp.set('min_cost',   minCost);         else sp.delete('min_cost');
+    if (maxCost)             sp.set('max_cost',   maxCost);         else sp.delete('max_cost');
+    if (minListPrice)        sp.set('min_list',   minListPrice);    else sp.delete('min_list');
+    if (maxListPrice)        sp.set('max_list',   maxListPrice);    else sp.delete('max_list');
+    if (minQty)              sp.set('min_qty',    minQty);          else sp.delete('min_qty');
+    if (maxQty)              sp.set('max_qty',    maxQty);          else sp.delete('max_qty');
+    if (minMargin)           sp.set('min_margin', minMargin);       else sp.delete('min_margin');
+    if (inStockOnly)         sp.set('in_stock',   'true');          else sp.delete('in_stock');
+    if (sortBy)              sp.set('sort_by',    sortBy);          else sp.delete('sort_by');
+    if (sortBy)              sp.set('sort_dir',   sortDir);         else sp.delete('sort_dir');
+    if (tagFilters.length)   sp.set('tags',       tagFilters.join(','));  else sp.delete('tags');
+    if (marketplaceClear)    sp.set('mkt_clear',  'true');          else sp.delete('mkt_clear');
+    if (page > 1)            sp.set('page',       String(page));    else sp.delete('page');
+    window.history.replaceState({}, '', url.toString());
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page, searchValue, supplierFilter, categoryFilter, brandFilter,
+      minCost, maxCost, minListPrice, maxListPrice, minQty, maxQty,
+      minMargin, inStockOnly, sortBy, sortDir, tagFilters, marketplaceClear]);
 
   const handleSupplier  = useCallback((v: string)       => { setSupplierFilter(v); setPage(1); }, []);
   const handleCategory  = useCallback((v: string)       => { setCategoryFilter(v); setPage(1); }, []);
@@ -2029,27 +2074,55 @@ function AvailableCatalogTab({
               let pos = 0;
               return groupBySkuWithTiers(rowProducts).map((group) => {
                 const key = group[0]._rowId;
+                const sku = group[0].aoa_sku;
+                const saved = isInWatchlist(sku);
                 const addBtn = (
                   <Button size="slim" variant="primary" disabled={atLimit} loading={pushMutation.isPending}
-                    onClick={() => { setPushError(null); pushMutation.mutate([group[0].aoa_sku]); }}>
+                    onClick={() => { setPushError(null); pushMutation.mutate([sku]); }}>
                     Add to Shopify
                   </Button>
+                );
+                const saveBtn = (
+                  <span onClick={(e) => e.stopPropagation()}>
+                    <Button
+                      size="slim"
+                      variant="plain"
+                      tone={saved ? 'success' : undefined}
+                      onClick={() => onToggleWatchlist({
+                        sku,
+                        name:          group[0].product_name,
+                        image_url:     group[0].image_url,
+                        merchant_cost: group[0].merchant_cost,
+                        list_price:    group[0].list_price,
+                        brand:         group[0].brand,
+                        category:      group[0].category_1,
+                      })}
+                    >
+                      {saved ? '★ Saved' : '☆ Save'}
+                    </Button>
+                  </span>
+                );
+                const actionEl = (
+                  <BlockStack gap="050">
+                    {addBtn}
+                    {saveBtn}
+                  </BlockStack>
                 );
                 if (group.length === 1) {
                   const el = (
                     <ProductRow key={key} product={group[0]} rowId={key} index={pos}
-                      selected={selectedResources.includes(key)} actionButton={addBtn}
-                      detailUrl={`/products/${encodeURIComponent(group[0].aoa_sku)}`} />
+                      selected={selectedResources.includes(key)} actionButton={actionEl}
+                      detailUrl={`/products/${encodeURIComponent(sku)}`} />
                   );
                   pos += 1;
                   return el;
                 }
-                const expanded = expandedSkus.has(group[0].aoa_sku);
+                const expanded = expandedSkus.has(sku);
                 const el = (
                   <ProductGroupRows key={key} group={group} startIndex={pos}
                     selectedResources={selectedResources} isExpanded={expanded}
-                    onToggle={() => toggleExpand(group[0].aoa_sku)} actionButton={addBtn}
-                    detailUrl={`/products/${encodeURIComponent(group[0].aoa_sku)}`} />
+                    onToggle={() => toggleExpand(sku)} actionButton={actionEl}
+                    detailUrl={`/products/${encodeURIComponent(sku)}`} />
                 );
                 pos += expanded ? 1 + group.length : 1;
                 return el;
@@ -2079,28 +2152,190 @@ function AvailableCatalogTab({
 // Page shell
 // ---------------------------------------------------------------------------
 
-const CATALOG_TABS = [
-  { id: 'active',    content: 'My Shopify Catalog' },
-  { id: 'available', content: 'Available to Add'   },
-];
+// ---------------------------------------------------------------------------
+// Watchlist tab
+// ---------------------------------------------------------------------------
+
+function WatchlistTab({
+  items,
+  onRemove,
+  onClear,
+}: {
+  items: WatchlistEntry[];
+  onRemove: (sku: string) => void;
+  onClear: () => void;
+}) {
+  const queryClient = useQueryClient();
+
+  const pushMutation = useMutation({
+    mutationFn: (skus: string[]) => pushCatalog({ skus }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+    },
+  });
+
+  if (items.length === 0) {
+    return (
+      <Card>
+        <EmptyState
+          heading="Your watchlist is empty"
+          image="https://cdn.shopify.com/s/files/1/0262/4071/2726/files/emptystate-files.png"
+        >
+          <Text as="p">
+            Browse <strong>Available to Add</strong> and click <strong>☆ Save</strong> on products you want to review later.
+          </Text>
+        </EmptyState>
+      </Card>
+    );
+  }
+
+  return (
+    <BlockStack gap="400">
+      <InlineStack align="end">
+        <Button variant="plain" tone="critical" onClick={onClear}>
+          Clear all ({String(items.length)})
+        </Button>
+      </InlineStack>
+
+      <Card padding="0">
+        <IndexTable
+          resourceName={{ singular: 'product', plural: 'products' }}
+          itemCount={items.length}
+          headings={[
+            { title: '' },
+            { title: 'Product' },
+            { title: 'Brand' },
+            { title: 'Cost' },
+            { title: 'List Price' },
+            { title: 'Saved' },
+            { title: '' },
+          ]}
+          selectable={false}
+        >
+          {items.map((item, i) => (
+            <IndexTable.Row key={item.sku} id={item.sku} position={i}>
+              <IndexTable.Cell>
+                {item.image_url ? (
+                  <img
+                    src={item.image_url}
+                    alt={item.name ?? item.sku}
+                    style={{ width: 40, height: 40, objectFit: 'contain', borderRadius: 4, background: '#f6f6f7' }}
+                  />
+                ) : (
+                  <div style={{ width: 40, height: 40, borderRadius: 4, background: '#f6f6f7' }} />
+                )}
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <BlockStack gap="050">
+                  <Text fontWeight="semibold" as="span">{item.name ?? '—'}</Text>
+                  <Text tone="subdued" variant="bodySm" as="span">AOA SKU: {item.sku}</Text>
+                </BlockStack>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text as="span">{item.brand ?? '—'}</Text>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text as="span">{formatPrice(item.merchant_cost)}</Text>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text as="span">{formatPrice(item.list_price)}</Text>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <Text tone="subdued" variant="bodySm" as="span">
+                  {new Date(item.added_at).toLocaleDateString()}
+                </Text>
+              </IndexTable.Cell>
+              <IndexTable.Cell>
+                <span onClick={(e) => e.stopPropagation()}>
+                  <InlineStack gap="200">
+                    <Button
+                      size="slim"
+                      variant="primary"
+                      loading={pushMutation.isPending}
+                      onClick={() => pushMutation.mutate([item.sku])}
+                    >
+                      Add to Shopify
+                    </Button>
+                    <Button
+                      size="slim"
+                      variant="plain"
+                      tone="critical"
+                      onClick={() => onRemove(item.sku)}
+                    >
+                      Remove
+                    </Button>
+                  </InlineStack>
+                </span>
+              </IndexTable.Cell>
+            </IndexTable.Row>
+          ))}
+        </IndexTable>
+      </Card>
+    </BlockStack>
+  );
+}
 
 export default function ProductsPage() {
-  const searchParams = useSearchParams();
-  const [selectedTab, setSelectedTab] = useState(0);
-  // push_all banner state — set true when navigated here from Settings with ?action=push_all
-  const [showPushAllBanner, setShowPushAllBanner] = useState(false);
+  // useSearchParams kept for SSR compatibility; URL state is read via window.location on client
+  useSearchParams();
 
-  // On mount: detect ?action=push_all, switch to Available tab, clear param from URL
+  // ── Lazy-init tab from URL so back-navigation lands on the right tab ──────
+  const [selectedTab, setSelectedTab] = useState<number>(() => {
+    if (typeof window === 'undefined') return 0;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('action') === 'push_all') return 1;
+    if (sp.get('tab') === 'available')   return 1;
+    if (sp.get('tab') === 'watchlist')   return 2;
+    return 0;
+  });
+
+  // Lazy-init push_all banner
+  const [showPushAllBanner, setShowPushAllBanner] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return new URLSearchParams(window.location.search).get('action') === 'push_all';
+  });
+
+  // On mount: clean up ?action=push_all from URL (already handled by lazy inits above)
   useEffect(() => {
-    if (searchParams.get('action') === 'push_all') {
-      setSelectedTab(1);
-      setShowPushAllBanner(true);
+    if (typeof window === 'undefined') return;
+    const sp = new URLSearchParams(window.location.search);
+    if (sp.get('action') === 'push_all') {
       const url = new URL(window.location.href);
       url.searchParams.delete('action');
       window.history.replaceState({}, '', url.toString());
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Tab selection — sync active tab to URL
+  const handleTabSelect = useCallback((idx: number) => {
+    setSelectedTab(idx);
+    if (typeof window === 'undefined') return;
+    const url = new URL(window.location.href);
+    const tabNames: (string | null)[] = [null, 'available', 'watchlist'];
+    const tabName = tabNames[idx] ?? null;
+    if (tabName) {
+      url.searchParams.set('tab', tabName);
+    } else {
+      // Active catalog tab — remove tab param (filter params stay so switching back restores them)
+      url.searchParams.delete('tab');
+    }
+    window.history.replaceState({}, '', url.toString());
+  }, []);
+
+  // Watchlist state — lives here so it persists across tab switches
+  const { items: watchlistItems, isInWatchlist, toggleWatchlist, removeFromWatchlist, clearWatchlist } = useWatchlist();
+
+  const catalogTabs = [
+    { id: 'active',    content: 'My Shopify Catalog' },
+    { id: 'available', content: 'Available to Add'   },
+    {
+      id: 'watchlist',
+      content: watchlistItems.length > 0
+        ? `Watchlist (${watchlistItems.length})`
+        : 'Watchlist',
+    },
+  ];
 
   const { data: summary, isLoading: summaryLoading, isError: summaryError, error: summaryFetchError } = useQuery({
     queryKey: ['catalogSummary'],
@@ -2145,7 +2380,7 @@ export default function ProductsPage() {
           : 'Manage your AOA product catalog'
       }
     >
-      <Tabs tabs={CATALOG_TABS} selected={selectedTab} onSelect={setSelectedTab}>
+      <Tabs tabs={catalogTabs} selected={selectedTab} onSelect={handleTabSelect}>
         <Box paddingBlockStart="400">
           {selectedTab === 0 && (
             <ActiveCatalogTab summary={summary} summaryLoading={summaryLoading} summaryError={summaryError} activeTotal={total} />
@@ -2155,6 +2390,15 @@ export default function ProductsPage() {
               summary={summary}
               showPushAllBanner={showPushAllBanner}
               onDismissPushAllBanner={() => setShowPushAllBanner(false)}
+              isInWatchlist={isInWatchlist}
+              onToggleWatchlist={toggleWatchlist}
+            />
+          )}
+          {selectedTab === 2 && (
+            <WatchlistTab
+              items={watchlistItems}
+              onRemove={removeFromWatchlist}
+              onClear={clearWatchlist}
             />
           )}
         </Box>
