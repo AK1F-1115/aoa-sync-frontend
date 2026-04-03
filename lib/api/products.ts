@@ -99,6 +99,11 @@ export async function getCatalog(
  * Pass { skus: [...] } to push specific products, or { push_all: true }
  * to fill all remaining plan slots automatically.
  *
+ * Long-running: a full catalog push can take ~10 minutes (1 req/sec per product).
+ * We set an explicit 11-minute AbortSignal timeout so the browser doesn't cut the
+ * connection early. If the signal fires, the caller should switch to
+ * background-polling mode rather than showing an error.
+ *
  * Rate limited to 5 calls/minute — handle 429 with a cooldown message.
  * On plan limit exceeded, the backend returns 400 with
  * { detail: { error: "plan_limit_exceeded", slots_remaining, ... } }.
@@ -106,10 +111,18 @@ export async function getCatalog(
 export async function pushCatalog(
   request: PushCatalogRequest
 ): Promise<PushCatalogResponse> {
-  return apiFetch<PushCatalogResponse>('/store/catalog/push', {
-    method: 'POST',
-    body: JSON.stringify(request),
-  });
+  const controller = new AbortController();
+  // 11 minutes — gives the backend a full 10-minute sync with a minute of headroom
+  const timeoutId = setTimeout(() => controller.abort(), 11 * 60 * 1_000);
+  try {
+    return await apiFetch<PushCatalogResponse>('/store/catalog/push', {
+      method: 'POST',
+      body: JSON.stringify(request),
+      signal: controller.signal,
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 /**

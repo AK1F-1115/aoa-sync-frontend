@@ -1,6 +1,6 @@
 ﻿'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useSearchParams } from 'next/navigation';
 import {
   Page,
@@ -166,9 +166,6 @@ function SummaryBar({ summary, isLoading, isError, activeTotal }: {
   isError?: boolean;
   activeTotal?: number;
 }) {
-  // Debug: log on every render so we can see what's being received
-  console.log('[AOA] SummaryBar:', { summary, isLoading, isError, activeTotal });
-
   if (isLoading && !summary) {
     return (
       <Card>
@@ -212,17 +209,47 @@ function SummaryBar({ summary, isLoading, isError, activeTotal }: {
     { label: 'Last sync', value: formatDateTime(summary.last_sync_at) },
   ];
 
+  const topCategories = summary.categories?.slice(0, 8) ?? [];
+  const topBrands     = summary.brands?.slice(0, 8) ?? [];
+  const showBreakdown = topCategories.length > 0 || topBrands.length > 0;
+
   return (
     <Card>
-      <InlineStack gap="600" wrap>
-        {stats.map(({ label, value, sub }) => (
-          <BlockStack gap="050" key={label}>
-            <Text as="span" tone="subdued" variant="bodySm">{label}</Text>
-            <Text as="span" fontWeight="semibold" variant="bodyMd">{value}</Text>
-            {sub && <Text as="span" tone="subdued" variant="bodySm">{sub}</Text>}
-          </BlockStack>
-        ))}
-      </InlineStack>
+      <BlockStack gap="300">
+        <InlineStack gap="600" wrap>
+          {stats.map(({ label, value, sub }) => (
+            <BlockStack gap="050" key={label}>
+              <Text as="span" tone="subdued" variant="bodySm">{label}</Text>
+              <Text as="span" fontWeight="semibold" variant="bodyMd">{value}</Text>
+              {sub && <Text as="span" tone="subdued" variant="bodySm">{sub}</Text>}
+            </BlockStack>
+          ))}
+        </InlineStack>
+
+        {showBreakdown && (
+          <>
+            <Divider />
+            <BlockStack gap="200">
+              {topCategories.length > 0 && (
+                <InlineStack gap="150" wrap blockAlign="center">
+                  <Text as="span" tone="subdued" variant="bodySm">Categories:</Text>
+                  {topCategories.map((c) => (
+                    <Badge key={c.name} tone="info">{`${c.name} · ${c.count}`}</Badge>
+                  ))}
+                </InlineStack>
+              )}
+              {topBrands.length > 0 && (
+                <InlineStack gap="150" wrap blockAlign="center">
+                  <Text as="span" tone="subdued" variant="bodySm">Brands:</Text>
+                  {topBrands.map((b) => (
+                    <Badge key={b.name}>{`${b.name} · ${b.count}`}</Badge>
+                  ))}
+                </InlineStack>
+              )}
+            </BlockStack>
+          </>
+        )}
+      </BlockStack>
     </Card>
   );
 }
@@ -1619,25 +1646,150 @@ function AvailableCatalogTab({
 
   // Push-all mutation — triggered from the ?action=push_all banner
   const [pushAllError, setPushAllError] = useState<string | null>(null);
+
+  // ── Progress tracking for push_all ────────────────────────────────────────
+  // pushInProgress  : the HTTP request is in flight (polling every 3s)
+  // backgroundPolling: request timed out / network error; polling every 5s until stable
+  // liveActiveCount : latest total_active from polling (shown in progress banner)
+  // pushToast       : auto-dismissing result banner
+  const [pushInProgress,   setPushInProgress]   = useState(false);
+  const [backgroundPolling, setBackgroundPolling] = useState(false);
+  const [liveActiveCount,  setLiveActiveCount]  = useState<number | null>(null);
+  const [pushToast, setPushToast] = useState<{ message: string; tone: 'success' | 'warning' | 'info' } | null>(null);
+
+  // Refs — always current inside async intervals / mutation callbacks
+  const pollIntervalRef   = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stableCountRef    = useRef(0);
+  const lastActiveRef     = useRef(0);
+  const initialActiveRef  = useRef(0);
+  const liveActiveRef     = useRef<number | null>(null);
+
+  // Auto-dismiss push toast after 6 s
+  useEffect(() => {
+    if (!pushToast) return;
+    const t = setTimeout(() => setPushToast(null), 6_000);
+    return () => clearTimeout(t);
+  }, [pushToast]);
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current); };
+  }, []);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
   const pushAllMutation = useMutation({
     mutationFn: () => pushCatalog({ push_all: true }),
+
+    onMutate: () => {
+      // Capture starting count and begin 3-second live polling
+      const initial = summary?.total_active ?? 0;
+      initialActiveRef.current = initial;
+      liveActiveRef.current    = initial;
+      lastActiveRef.current    = initial;
+      stableCountRef.current   = 0;
+      setLiveActiveCount(initial);
+      setPushInProgress(true);
+      setPushAllError(null);
+
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const s = await getCatalogSummary();
+          const c = s.total_active ?? 0;
+          liveActiveRef.current = c;
+          setLiveActiveCount(c);
+          // Also update React Query cache so SummaryBar reflects live data
+          queryClient.setQueryData(['catalogSummary'], s);
+        } catch { /* ignore polling errors */ }
+      }, 3_000);
+    },
+
     onSuccess: (result) => {
+      stopPolling();
+      setPushInProgress(false);
       setPushAllError(null);
       onDismissPushAllBanner?.();
       void queryClient.invalidateQueries({ queryKey: ['catalog'] });
       void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
-      // Surface result count in the existing push success banner via setPushError reuse
-      // — actually just let the banner show via isSuccess on pushAllMutation
+
+      if (result.pushed > 0 && result.failed === 0) {
+        setPushToast({ message: `✅ Sync complete — ${result.pushed.toLocaleString()} product${result.pushed !== 1 ? 's' : ''} added`, tone: 'success' });
+      } else if (result.pushed > 0 && result.failed > 0) {
+        setPushToast({ message: `⚠️ ${result.pushed.toLocaleString()} added, ${result.failed.toLocaleString()} failed`, tone: 'warning' });
+      } else {
+        setPushToast({ message: 'No new products to add', tone: 'info' });
+      }
     },
+
     onError: (err) => {
+      // AbortError (our 11-min timeout) or network error — switch to background polling
+      const isNetworkOrTimeout =
+        !(err instanceof ApiError) ||
+        (err instanceof Error && (err.name === 'AbortError' || err.name === 'TypeError'));
+
+      if (isNetworkOrTimeout || (err instanceof Error && err.name === 'AbortError')) {
+        stopPolling(); // stop 3s polling; restart at 5s below
+        setPushInProgress(false);
+        setBackgroundPolling(true);
+        stableCountRef.current = 0;
+        lastActiveRef.current  = liveActiveRef.current ?? initialActiveRef.current;
+
+        // Poll every 5s; consider complete when total_active unchanged for 3 consecutive polls
+        pollIntervalRef.current = setInterval(async () => {
+          try {
+            const s = await getCatalogSummary();
+            const c = s.total_active ?? 0;
+            liveActiveRef.current = c;
+            setLiveActiveCount(c);
+            queryClient.setQueryData(['catalogSummary'], s);
+
+            if (c === lastActiveRef.current) {
+              stableCountRef.current++;
+              if (stableCountRef.current >= 3) {
+                stopPolling();
+                setBackgroundPolling(false);
+                onDismissPushAllBanner?.();
+                const delta = c - initialActiveRef.current;
+                setPushToast({
+                  message: delta > 0
+                    ? `✅ Sync complete — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added`
+                    : '✅ Sync complete',
+                  tone: 'success',
+                });
+                void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+                void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
+              }
+            } else {
+              stableCountRef.current = 0;
+              lastActiveRef.current  = c;
+            }
+          } catch { /* ignore */ }
+        }, 5_000);
+        return;
+      }
+
+      // Normal ApiError
+      stopPolling();
+      setPushInProgress(false);
       if (err instanceof ApiError) {
-        const detail = parsePlanLimitDetail(err);
-        if (detail) {
-          setPushAllError(
-            `Your plan limit was reached. ${detail.slots_used != null ? detail.slots_used.toLocaleString() + ' products were added.' : ''}`
-          );
-          return;
+        if (err.status === 400) {
+          const detail = parsePlanLimitDetail(err);
+          if (detail) {
+            setPushAllError(
+              `Your plan limit was reached.${
+                detail.slots_used != null ? ` ${detail.slots_used.toLocaleString()} products were added.` : ''
+              }`
+            );
+            return;
+          }
         }
+        setPushAllError(err.message || 'An unexpected error occurred. Please try again.');
+        return;
       }
       setPushAllError('An unexpected error occurred. Please try again.');
     },
@@ -1671,28 +1823,50 @@ function AvailableCatalogTab({
 
   return (
     <BlockStack gap="400">
-      {/* Push-all confirmation banner — shown when redirected from Settings */}
+      {/* Auto-dismiss result toast */}
+      {pushToast && (
+        <Banner
+          tone={pushToast.tone === 'success' ? 'success' : pushToast.tone === 'warning' ? 'warning' : 'info'}
+          onDismiss={() => setPushToast(null)}
+        >
+          <Text as="p">{pushToast.message}</Text>
+        </Banner>
+      )}
+
+      {/* Push-all confirmation / progress banner */}
       {showPushAllBanner && !noSlotsLeft && (
         <Banner
-          title="Ready to add available products to your Shopify store"
+          title={
+            backgroundPolling ? 'Sync is running in the background — checking for updates…' :
+            pushInProgress    ? 'Adding products to your store…' :
+                                'Ready to add available products to your Shopify store'
+          }
           tone="info"
-          onDismiss={onDismissPushAllBanner}
+          onDismiss={(!pushInProgress && !backgroundPolling) ? onDismissPushAllBanner : undefined}
         >
           <BlockStack gap="300">
-            {slotsRemaining != null && (
+            {(pushInProgress || backgroundPolling) && (
+              <InlineStack gap="200" blockAlign="center">
+                <Spinner size="small" />
+                <Text as="p">
+                  {liveActiveCount != null
+                    ? `${liveActiveCount.toLocaleString()} in Shopify so far…`
+                    : backgroundPolling ? 'Waiting for sync to stabilize…' : 'Starting…'}
+                </Text>
+              </InlineStack>
+            )}
+
+            {!pushInProgress && !backgroundPolling && slotsRemaining != null && (
               <Text as="p" tone="subdued">
                 {slotsRemaining.toLocaleString()} slot{slotsRemaining !== 1 ? 's' : ''} remaining on your plan.
               </Text>
             )}
-            {pushAllMutation.isSuccess && (
-              <Text as="p" tone="subdued">
-                ✓ {pushAllMutation.data.pushed.toLocaleString()} product{pushAllMutation.data.pushed !== 1 ? 's' : ''} added successfully.
-              </Text>
-            )}
+
             {pushAllError && (
               <Text as="p" tone="critical">{pushAllError}</Text>
             )}
-            {!pushAllMutation.isSuccess && (
+
+            {!pushInProgress && !backgroundPolling && (
               <InlineStack gap="300">
                 <Button
                   variant="primary"
