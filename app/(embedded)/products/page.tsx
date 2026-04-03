@@ -1748,8 +1748,8 @@ function AvailableCatalogTab({
               <Button
                 variant="primary"
                 loading={pushAllIsPending}
-                disabled={pushAllIsPending}
-                onClick={() => { onClearPushAllError(); onTriggerPushAll(); }}
+                disabled={pushAllIsPending || pushAllIsSyncing}
+                onClick={() => { onDismissPushAllBanner?.(); onClearPushAllError(); onTriggerPushAll(); }}
               >
                 Add All Available Products
               </Button>
@@ -2129,6 +2129,9 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
   const lastActiveRef    = useRef(0);
   const initialActiveRef = useRef(0);
   const liveActiveRef    = useRef<number | null>(null);
+  // Synchronous lock — set before mutation.mutate() fires, checked before React can re-render.
+  // Prevents a rapid double-click or two events on the same frame from queuing two server jobs.
+  const triggeredRef = useRef(false);
 
   const stopPolling = useCallback(() => {
     if (pollIntervalRef.current) {
@@ -2140,6 +2143,7 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
   const finishSync = useCallback((currentCount: number) => {
     stopPolling();
     setIsSyncing(false);
+    triggeredRef.current = false;
     sessionStorage.removeItem(PUSH_PROGRESS_KEY);
     const delta = currentCount - initialActiveRef.current;
     setPushToast({
@@ -2234,6 +2238,7 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
         const detail = parsePlanLimitDetail(err);
         stopPolling();
         setIsSyncing(false);
+        triggeredRef.current = false;
         sessionStorage.removeItem(PUSH_PROGRESS_KEY);
         setError(
           detail
@@ -2255,7 +2260,12 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
     error,
     pushToast,
     setPushToast,
-    startPushAll: () => { setError(null); mutation.mutate(); },
+    startPushAll: () => {
+      if (triggeredRef.current || mutation.isPending) return; // synchronous lock
+      triggeredRef.current = true;
+      setError(null);
+      mutation.mutate();
+    },
     clearError:   () => setError(null),
   };
 }
