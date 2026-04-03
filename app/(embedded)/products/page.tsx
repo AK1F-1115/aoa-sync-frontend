@@ -309,7 +309,7 @@ function FilterBar({
         <TextField
           label="Search products"
           labelHidden
-          placeholder="Search by product name, SKU, or UPC..."
+          placeholder="Search by name, AOA SKU, or UPC"
           value={searchValue}
           onChange={onSearchChange}
           clearButton
@@ -1755,88 +1755,117 @@ function AvailableCatalogTab({
     },
 
     onSuccess: (result) => {
-      stopPolling();
-      setPushInProgress(false);
-      setPushAllError(null);
-      onDismissPushAllBanner?.();
-      void queryClient.invalidateQueries({ queryKey: ['catalog'] });
-      void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
-
-      if (result.pushed > 0 && result.failed === 0) {
-        setPushToast({ message: `✅ Sync complete — ${result.pushed.toLocaleString()} product${result.pushed !== 1 ? 's' : ''} added`, tone: 'success' });
-      } else if (result.pushed > 0 && result.failed > 0) {
-        setPushToast({ message: `⚠️ ${result.pushed.toLocaleString()} added, ${result.failed.toLocaleString()} failed`, tone: 'warning' });
-      } else {
-        setPushToast({ message: 'No new products to add', tone: 'info' });
+      if (!result.job_started) {
+        // Synchronous response (specific-SKU push or legacy fallback)
+        stopPolling();
+        setPushInProgress(false);
+        setPushAllError(null);
+        onDismissPushAllBanner?.();
+        void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+        void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
+        const delta = (liveActiveRef.current ?? initialActiveRef.current) - initialActiveRef.current;
+        setPushToast({
+          message: delta > 0
+            ? `✅ Done — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added to your store`
+            : 'No new products were added',
+          tone: delta > 0 ? 'success' : 'info',
+        });
+        return;
       }
+
+      // HTTP 202 — job accepted, running on server. Switch to stable-detection polling.
+      // Keep pushInProgress=true so the "Adding products…" banner stays visible.
+      stopPolling();
+      setPushAllError(null);
+      stableCountRef.current = 0;
+      lastActiveRef.current  = liveActiveRef.current ?? initialActiveRef.current;
+
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const s = await getCatalogSummary();
+          const c = s.total_active ?? 0;
+          liveActiveRef.current = c;
+          setLiveActiveCount(c);
+          queryClient.setQueryData(['catalogSummary'], s);
+
+          if (c === lastActiveRef.current) {
+            stableCountRef.current++;
+            if (stableCountRef.current >= 3) {
+              stopPolling();
+              setPushInProgress(false);
+              onDismissPushAllBanner?.();
+              const delta = c - initialActiveRef.current;
+              setPushToast({
+                message: delta > 0
+                  ? `✅ Done — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added to your store`
+                  : 'No new products were added',
+                tone: delta > 0 ? 'success' : 'info',
+              });
+              void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+              void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
+            }
+          } else {
+            stableCountRef.current = 0;
+            lastActiveRef.current  = c;
+          }
+        } catch { /* ignore */ }
+      }, 3_000);
     },
 
     onError: (err) => {
-      // AbortError (our 11-min timeout) or network error — switch to background polling
-      const isNetworkOrTimeout =
-        !(err instanceof ApiError) ||
-        (err instanceof Error && (err.name === 'AbortError' || err.name === 'TypeError'));
-
-      if (isNetworkOrTimeout || (err instanceof Error && err.name === 'AbortError')) {
-        stopPolling(); // stop 3s polling; restart at 5s below
+      // 400 plan_limit_exceeded — stop and surface the error
+      if (err instanceof ApiError && err.status === 400) {
+        const detail = parsePlanLimitDetail(err);
+        stopPolling();
         setPushInProgress(false);
-        setBackgroundPolling(true);
-        stableCountRef.current = 0;
-        lastActiveRef.current  = liveActiveRef.current ?? initialActiveRef.current;
-
-        // Poll every 5s; consider complete when total_active unchanged for 3 consecutive polls
-        pollIntervalRef.current = setInterval(async () => {
-          try {
-            const s = await getCatalogSummary();
-            const c = s.total_active ?? 0;
-            liveActiveRef.current = c;
-            setLiveActiveCount(c);
-            queryClient.setQueryData(['catalogSummary'], s);
-
-            if (c === lastActiveRef.current) {
-              stableCountRef.current++;
-              if (stableCountRef.current >= 3) {
-                stopPolling();
-                setBackgroundPolling(false);
-                onDismissPushAllBanner?.();
-                const delta = c - initialActiveRef.current;
-                setPushToast({
-                  message: delta > 0
-                    ? `✅ Sync complete — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added`
-                    : '✅ Sync complete',
-                  tone: 'success',
-                });
-                void queryClient.invalidateQueries({ queryKey: ['catalog'] });
-                void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
-              }
-            } else {
-              stableCountRef.current = 0;
-              lastActiveRef.current  = c;
-            }
-          } catch { /* ignore */ }
-        }, 5_000);
-        return;
-      }
-
-      // Normal ApiError
-      stopPolling();
-      setPushInProgress(false);
-      if (err instanceof ApiError) {
-        if (err.status === 400) {
-          const detail = parsePlanLimitDetail(err);
-          if (detail) {
-            setPushAllError(
-              `Your plan limit was reached.${
+        setPushAllError(
+          detail
+            ? `Your plan limit was reached.${
                 detail.slots_used != null ? ` ${detail.slots_used.toLocaleString()} products were added.` : ''
               }`
-            );
-            return;
-          }
-        }
-        setPushAllError(err.message || 'An unexpected error occurred. Please try again.');
+            : err.message || 'An unexpected error occurred. Please try again.'
+        );
         return;
       }
-      setPushAllError('An unexpected error occurred. Please try again.');
+
+      // All other errors (network, timeout, 5xx) — server likely started the job anyway.
+      // Switch to background polling; don't show an error to the user.
+      stopPolling();
+      setPushInProgress(false);
+      setBackgroundPolling(true);
+      stableCountRef.current = 0;
+      lastActiveRef.current  = liveActiveRef.current ?? initialActiveRef.current;
+
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const s = await getCatalogSummary();
+          const c = s.total_active ?? 0;
+          liveActiveRef.current = c;
+          setLiveActiveCount(c);
+          queryClient.setQueryData(['catalogSummary'], s);
+
+          if (c === lastActiveRef.current) {
+            stableCountRef.current++;
+            if (stableCountRef.current >= 3) {
+              stopPolling();
+              setBackgroundPolling(false);
+              onDismissPushAllBanner?.();
+              const delta = c - initialActiveRef.current;
+              setPushToast({
+                message: delta > 0
+                  ? `✅ Done — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added to your store`
+                  : 'No new products were added',
+                tone: delta > 0 ? 'success' : 'info',
+              });
+              void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+              void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
+            }
+          } else {
+            stableCountRef.current = 0;
+            lastActiveRef.current  = c;
+          }
+        } catch { /* ignore */ }
+      }, 3_000);
     },
   });
 

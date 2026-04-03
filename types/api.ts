@@ -530,13 +530,20 @@ export type PushCatalogRequest =
 /** Success response from POST /store/catalog/push */
 export interface PushCatalogResponse {
   ok: boolean;
-  pushed: number;
-  failed: number;
+  /**
+   * True when push_all was accepted as a background job (HTTP 202).
+   * The sync runs server-side; poll /store/catalog/summary for progress.
+   * Undefined / false for specific-SKU pushes which are still synchronous.
+   */
+  job_started?: boolean;
+  /** Number pushed — only present for synchronous specific-SKU pushes */
+  pushed?: number;
+  failed?: number;
   slots_used: number;
   slots_total: number | null;
   slots_remaining: number | null;
-  errors: string[];
-  elapsed: number;
+  errors?: string[];
+  elapsed?: number;
 }
 
 /** 400 detail body when plan limit is exceeded */
