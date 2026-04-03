@@ -1487,12 +1487,23 @@ function AvailableCatalogTab({
   onDismissPushAllBanner,
   isInWatchlist,
   onToggleWatchlist,
+  pushAllIsSyncing,
+  pushAllIsPending,
+  pushAllError,
+  onTriggerPushAll,
+  onClearPushAllError,
 }: {
   summary: CatalogSummary | undefined;
   showPushAllBanner?: boolean;
   onDismissPushAllBanner?: () => void;
   isInWatchlist: (sku: string) => boolean;
   onToggleWatchlist: (entry: Omit<WatchlistEntry, 'added_at'>) => void;
+  /** True while push_all HTTP request is in flight or 202 job is polling */
+  pushAllIsSyncing: boolean;
+  pushAllIsPending: boolean;
+  pushAllError: string | null;
+  onTriggerPushAll: () => void;
+  onClearPushAllError: () => void;
 }) {
   const queryClient = useQueryClient();
 
@@ -1689,186 +1700,6 @@ function AvailableCatalogTab({
     },
   });
 
-  // Push-all mutation — triggered from the ?action=push_all banner
-  const [pushAllError, setPushAllError] = useState<string | null>(null);
-
-  // ── Progress tracking for push_all ────────────────────────────────────────
-  // pushInProgress  : the HTTP request is in flight (polling every 3s)
-  // backgroundPolling: request timed out / network error; polling every 5s until stable
-  // liveActiveCount : latest total_active from polling (shown in progress banner)
-  // pushToast       : auto-dismissing result banner
-  const [pushInProgress,   setPushInProgress]   = useState(false);
-  const [backgroundPolling, setBackgroundPolling] = useState(false);
-  const [liveActiveCount,  setLiveActiveCount]  = useState<number | null>(null);
-  const [pushToast, setPushToast] = useState<{ message: string; tone: 'success' | 'warning' | 'info' } | null>(null);
-
-  // Refs — always current inside async intervals / mutation callbacks
-  const pollIntervalRef   = useRef<ReturnType<typeof setInterval> | null>(null);
-  const stableCountRef    = useRef(0);
-  const lastActiveRef     = useRef(0);
-  const initialActiveRef  = useRef(0);
-  const liveActiveRef     = useRef<number | null>(null);
-
-  // Auto-dismiss push toast after 6 s
-  useEffect(() => {
-    if (!pushToast) return;
-    const t = setTimeout(() => setPushToast(null), 6_000);
-    return () => clearTimeout(t);
-  }, [pushToast]);
-
-  // Cleanup polling on unmount
-  useEffect(() => {
-    return () => { if (pollIntervalRef.current) clearInterval(pollIntervalRef.current); };
-  }, []);
-
-  const stopPolling = useCallback(() => {
-    if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
-      pollIntervalRef.current = null;
-    }
-  }, []);
-
-  const pushAllMutation = useMutation({
-    mutationFn: () => pushCatalog({ push_all: true }),
-
-    onMutate: () => {
-      // Capture starting count and begin 3-second live polling
-      const initial = summary?.total_active ?? 0;
-      initialActiveRef.current = initial;
-      liveActiveRef.current    = initial;
-      lastActiveRef.current    = initial;
-      stableCountRef.current   = 0;
-      setLiveActiveCount(initial);
-      setPushInProgress(true);
-      setPushAllError(null);
-
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const s = await getCatalogSummary();
-          const c = s.total_active ?? 0;
-          liveActiveRef.current = c;
-          setLiveActiveCount(c);
-          // Also update React Query cache so SummaryBar reflects live data
-          queryClient.setQueryData(['catalogSummary'], s);
-        } catch { /* ignore polling errors */ }
-      }, 3_000);
-    },
-
-    onSuccess: (result) => {
-      if (!result.job_started) {
-        // Synchronous response (specific-SKU push or legacy fallback)
-        stopPolling();
-        setPushInProgress(false);
-        setPushAllError(null);
-        onDismissPushAllBanner?.();
-        void queryClient.invalidateQueries({ queryKey: ['catalog'] });
-        void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
-        const delta = (liveActiveRef.current ?? initialActiveRef.current) - initialActiveRef.current;
-        setPushToast({
-          message: delta > 0
-            ? `✅ Done — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added to your store`
-            : 'No new products were added',
-          tone: delta > 0 ? 'success' : 'info',
-        });
-        return;
-      }
-
-      // HTTP 202 — job accepted, running on server. Switch to stable-detection polling.
-      // Keep pushInProgress=true so the "Adding products…" banner stays visible.
-      stopPolling();
-      setPushAllError(null);
-      stableCountRef.current = 0;
-      lastActiveRef.current  = liveActiveRef.current ?? initialActiveRef.current;
-
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const s = await getCatalogSummary();
-          const c = s.total_active ?? 0;
-          liveActiveRef.current = c;
-          setLiveActiveCount(c);
-          queryClient.setQueryData(['catalogSummary'], s);
-
-          if (c === lastActiveRef.current) {
-            stableCountRef.current++;
-            if (stableCountRef.current >= 3) {
-              stopPolling();
-              setPushInProgress(false);
-              onDismissPushAllBanner?.();
-              const delta = c - initialActiveRef.current;
-              setPushToast({
-                message: delta > 0
-                  ? `✅ Done — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added to your store`
-                  : 'No new products were added',
-                tone: delta > 0 ? 'success' : 'info',
-              });
-              void queryClient.invalidateQueries({ queryKey: ['catalog'] });
-              void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
-            }
-          } else {
-            stableCountRef.current = 0;
-            lastActiveRef.current  = c;
-          }
-        } catch { /* ignore */ }
-      }, 3_000);
-    },
-
-    onError: (err) => {
-      // 400 plan_limit_exceeded — stop and surface the error
-      if (err instanceof ApiError && err.status === 400) {
-        const detail = parsePlanLimitDetail(err);
-        stopPolling();
-        setPushInProgress(false);
-        setPushAllError(
-          detail
-            ? `Your plan limit was reached.${
-                detail.slots_used != null ? ` ${detail.slots_used.toLocaleString()} products were added.` : ''
-              }`
-            : err.message || 'An unexpected error occurred. Please try again.'
-        );
-        return;
-      }
-
-      // All other errors (network, timeout, 5xx) — server likely started the job anyway.
-      // Switch to background polling; don't show an error to the user.
-      stopPolling();
-      setPushInProgress(false);
-      setBackgroundPolling(true);
-      stableCountRef.current = 0;
-      lastActiveRef.current  = liveActiveRef.current ?? initialActiveRef.current;
-
-      pollIntervalRef.current = setInterval(async () => {
-        try {
-          const s = await getCatalogSummary();
-          const c = s.total_active ?? 0;
-          liveActiveRef.current = c;
-          setLiveActiveCount(c);
-          queryClient.setQueryData(['catalogSummary'], s);
-
-          if (c === lastActiveRef.current) {
-            stableCountRef.current++;
-            if (stableCountRef.current >= 3) {
-              stopPolling();
-              setBackgroundPolling(false);
-              onDismissPushAllBanner?.();
-              const delta = c - initialActiveRef.current;
-              setPushToast({
-                message: delta > 0
-                  ? `✅ Done — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added to your store`
-                  : 'No new products were added',
-                tone: delta > 0 ? 'success' : 'info',
-              });
-              void queryClient.invalidateQueries({ queryKey: ['catalog'] });
-              void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
-            }
-          } else {
-            stableCountRef.current = 0;
-            lastActiveRef.current  = c;
-          }
-        } catch { /* ignore */ }
-      }, 3_000);
-    },
-  });
-
   const hasBasicFilters    = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
   const researchActiveCount = [dMinCost, dMaxCost, dMinList, dMaxList, dMinQty, dMaxQty, minMargin]
     .filter(Boolean).length + (inStockOnly ? 1 : 0) + (marketplaceClear ? 1 : 0) + tagFilters.length;
@@ -1897,69 +1728,40 @@ function AvailableCatalogTab({
 
   return (
     <BlockStack gap="400">
-      {/* Auto-dismiss result toast */}
-      {pushToast && (
+      {/* Push-all idle confirmation banner (progress shown at page level) */}
+      {showPushAllBanner && !noSlotsLeft && !pushAllIsSyncing && (
         <Banner
-          tone={pushToast.tone === 'success' ? 'success' : pushToast.tone === 'warning' ? 'warning' : 'info'}
-          onDismiss={() => setPushToast(null)}
-        >
-          <Text as="p">{pushToast.message}</Text>
-        </Banner>
-      )}
-
-      {/* Push-all confirmation / progress banner */}
-      {showPushAllBanner && !noSlotsLeft && (
-        <Banner
-          title={
-            backgroundPolling ? 'Sync is running in the background — checking for updates…' :
-            pushInProgress    ? 'Adding products to your store…' :
-                                'Ready to add available products to your Shopify store'
-          }
+          title="Ready to add available products to your Shopify store"
           tone="info"
-          onDismiss={(!pushInProgress && !backgroundPolling) ? onDismissPushAllBanner : undefined}
+          onDismiss={onDismissPushAllBanner}
         >
           <BlockStack gap="300">
-            {(pushInProgress || backgroundPolling) && (
-              <InlineStack gap="200" blockAlign="center">
-                <Spinner size="small" />
-                <Text as="p">
-                  {liveActiveCount != null
-                    ? `${liveActiveCount.toLocaleString()} in Shopify so far…`
-                    : backgroundPolling ? 'Waiting for sync to stabilize…' : 'Starting…'}
-                </Text>
-              </InlineStack>
-            )}
-
-            {!pushInProgress && !backgroundPolling && slotsRemaining != null && (
+            {slotsRemaining != null && (
               <Text as="p" tone="subdued">
                 {slotsRemaining.toLocaleString()} slot{slotsRemaining !== 1 ? 's' : ''} remaining on your plan.
               </Text>
             )}
-
             {pushAllError && (
               <Text as="p" tone="critical">{pushAllError}</Text>
             )}
-
-            {!pushInProgress && !backgroundPolling && (
-              <InlineStack gap="300">
-                <Button
-                  variant="primary"
-                  loading={pushAllMutation.isPending}
-                  disabled={pushAllMutation.isPending}
-                  onClick={() => { setPushAllError(null); pushAllMutation.mutate(); }}
-                >
-                  Add All Available Products
-                </Button>
-                <Button variant="secondary" onClick={onDismissPushAllBanner}>
-                  Cancel
-                </Button>
-              </InlineStack>
-            )}
+            <InlineStack gap="300">
+              <Button
+                variant="primary"
+                loading={pushAllIsPending}
+                disabled={pushAllIsPending}
+                onClick={() => { onClearPushAllError(); onTriggerPushAll(); }}
+              >
+                Add All Available Products
+              </Button>
+              <Button variant="secondary" onClick={onDismissPushAllBanner}>
+                Cancel
+              </Button>
+            </InlineStack>
           </BlockStack>
         </Banner>
       )}
 
-      {/* If no slots left when push_all banner arrives, show a toast-style warning instead */}
+      {/* No slots left */}
       {showPushAllBanner && noSlotsLeft && (
         <Banner
           title="No slots remaining on your plan"
@@ -2309,6 +2111,192 @@ function WatchlistTab({
   );
 }
 
+// ---------------------------------------------------------------------------
+// Push-all progress — lives at page level so it persists across tab switches
+// ---------------------------------------------------------------------------
+
+const PUSH_PROGRESS_KEY = 'aoa_push_in_progress';
+
+function usePushAllProgress(summary: CatalogSummary | undefined) {
+  const queryClient = useQueryClient();
+  const [isSyncing, setIsSyncing]   = useState(false);
+  const [liveCount, setLiveCount]   = useState<number | null>(null);
+  const [error, setError]           = useState<string | null>(null);
+  const [pushToast, setPushToast]   = useState<{ message: string; tone: 'success' | 'warning' | 'info' } | null>(null);
+
+  const pollIntervalRef  = useRef<ReturnType<typeof setInterval> | null>(null);
+  const stableCountRef   = useRef(0);
+  const lastActiveRef    = useRef(0);
+  const initialActiveRef = useRef(0);
+  const liveActiveRef    = useRef<number | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
+  const finishSync = useCallback((currentCount: number) => {
+    stopPolling();
+    setIsSyncing(false);
+    sessionStorage.removeItem(PUSH_PROGRESS_KEY);
+    const delta = currentCount - initialActiveRef.current;
+    setPushToast({
+      message: delta > 0
+        ? `✅ Done — ${delta.toLocaleString()} product${delta !== 1 ? 's' : ''} added to your store`
+        : 'No new products were added',
+      tone: delta > 0 ? 'success' : 'info',
+    });
+    void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+    void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
+  }, [stopPolling, queryClient]);
+
+  const startPolling = useCallback(() => {
+    stableCountRef.current = 0;
+    lastActiveRef.current  = liveActiveRef.current ?? initialActiveRef.current;
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const s = await getCatalogSummary();
+        const c = s.total_active ?? 0;
+        liveActiveRef.current = c;
+        setLiveCount(c);
+        queryClient.setQueryData(['catalogSummary'], s);
+        if (c === lastActiveRef.current) {
+          stableCountRef.current++;
+          if (stableCountRef.current >= 3) finishSync(c);
+        } else {
+          stableCountRef.current = 0;
+          lastActiveRef.current  = c;
+        }
+      } catch { /* ignore */ }
+    }, 3_000);
+  }, [queryClient, finishSync]);
+
+  // On mount: resume polling if a push was started before navigating away
+  useEffect(() => {
+    const stored = sessionStorage.getItem(PUSH_PROGRESS_KEY);
+    if (!stored) return;
+    try {
+      const { initialCount, startedAt } = JSON.parse(stored) as { initialCount: number; startedAt: string };
+      const ageMs = Date.now() - new Date(startedAt).getTime();
+      if (ageMs > 15 * 60_000) { sessionStorage.removeItem(PUSH_PROGRESS_KEY); return; }
+      initialActiveRef.current = initialCount;
+      liveActiveRef.current    = null;
+      setIsSyncing(true);
+      startPolling();
+    } catch { sessionStorage.removeItem(PUSH_PROGRESS_KEY); }
+    return () => stopPolling();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
+  // Auto-dismiss success/info toast after 6 s
+  useEffect(() => {
+    if (!pushToast) return;
+    const t = setTimeout(() => setPushToast(null), 6_000);
+    return () => clearTimeout(t);
+  }, [pushToast]);
+
+  const mutation = useMutation({
+    mutationFn: () => pushCatalog({ push_all: true }),
+    onMutate: () => {
+      const initial = summary?.total_active ?? 0;
+      initialActiveRef.current = initial;
+      liveActiveRef.current    = initial;
+      setLiveCount(initial);
+      setIsSyncing(true);
+      setError(null);
+      sessionStorage.setItem(
+        PUSH_PROGRESS_KEY,
+        JSON.stringify({ initialCount: initial, startedAt: new Date().toISOString() }),
+      );
+      // Keep liveCount fresh while the 30-s request is in-flight
+      pollIntervalRef.current = setInterval(async () => {
+        try {
+          const s = await getCatalogSummary();
+          const c = s.total_active ?? 0;
+          liveActiveRef.current = c;
+          setLiveCount(c);
+          queryClient.setQueryData(['catalogSummary'], s);
+        } catch { /* ignore */ }
+      }, 3_000);
+    },
+    onSuccess: (result) => {
+      stopPolling(); // stop fast poll
+      if (!result.job_started) { finishSync(liveActiveRef.current ?? initialActiveRef.current); return; }
+      startPolling(); // stable-detection polling
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 400) {
+        const detail = parsePlanLimitDetail(err);
+        stopPolling();
+        setIsSyncing(false);
+        sessionStorage.removeItem(PUSH_PROGRESS_KEY);
+        setError(
+          detail
+            ? `Your plan limit was reached.${detail.slots_used != null ? ` ${detail.slots_used.toLocaleString()} products were added.` : ''}`
+            : (err as ApiError).message || 'An unexpected error occurred.',
+        );
+        return;
+      }
+      // Network / timeout / 5xx — server job likely still running; keep syncing + stable-detection poll
+      stopPolling();
+      startPolling();
+    },
+  });
+
+  return {
+    isSyncing,
+    isPending: mutation.isPending,
+    liveCount,
+    error,
+    pushToast,
+    setPushToast,
+    startPushAll: () => { setError(null); mutation.mutate(); },
+    clearError:   () => setError(null),
+  };
+}
+
+function PushProgressBanner({
+  isSyncing,
+  liveCount,
+  pushToast,
+  setPushToast,
+}: {
+  isSyncing: boolean;
+  liveCount: number | null;
+  pushToast: { message: string; tone: 'success' | 'warning' | 'info' } | null;
+  setPushToast: (v: null) => void;
+}) {
+  if (!isSyncing && !pushToast) return null;
+  return (
+    <Box paddingBlockEnd="400">
+      <BlockStack gap="200">
+        {pushToast && (
+          <Banner tone={pushToast.tone} onDismiss={() => setPushToast(null)}>
+            <Text as="p">{pushToast.message}</Text>
+          </Banner>
+        )}
+        {isSyncing && (
+          <Banner title="Adding products to your store…" tone="info">
+            <InlineStack gap="200" blockAlign="center">
+              <Spinner size="small" />
+              <Text as="p">
+                {liveCount != null ? `${liveCount.toLocaleString()} in Shopify so far…` : 'Starting…'}
+              </Text>
+            </InlineStack>
+          </Banner>
+        )}
+      </BlockStack>
+    </Box>
+  );
+}
+
+// ---------------------------------------------------------------------------
+
 export default function ProductsPage() {
   // useSearchParams kept for SSR compatibility; URL state is read via window.location on client
   useSearchParams();
@@ -2393,6 +2381,18 @@ export default function ProductsPage() {
   });
   const total = activeCountData?.total ?? 0;
 
+  // Push-all progress lives here so it survives tab switches
+  const {
+    isSyncing: pushAllIsSyncing,
+    isPending: pushAllIsPending,
+    liveCount: pushAllLiveCount,
+    error:     pushAllError,
+    pushToast,
+    setPushToast,
+    startPushAll,
+    clearError:  clearPushAllError,
+  } = usePushAllProgress(summary);
+
   if (summaryLoading && !summary) {
     return (
       <SkeletonPage title="Products">
@@ -2414,6 +2414,14 @@ export default function ProductsPage() {
           : 'Manage your AOA product catalog'
       }
     >
+      {/* Page-level push banner — visible on all tabs so it survives navigation */}
+      <PushProgressBanner
+        isSyncing={pushAllIsSyncing}
+        liveCount={pushAllLiveCount}
+        pushToast={pushToast}
+        setPushToast={setPushToast}
+      />
+
       <Tabs tabs={catalogTabs} selected={selectedTab} onSelect={handleTabSelect}>
         <Box paddingBlockStart="400">
           {selectedTab === 0 && (
@@ -2426,6 +2434,11 @@ export default function ProductsPage() {
               onDismissPushAllBanner={() => setShowPushAllBanner(false)}
               isInWatchlist={isInWatchlist}
               onToggleWatchlist={toggleWatchlist}
+              pushAllIsSyncing={pushAllIsSyncing}
+              pushAllIsPending={pushAllIsPending}
+              pushAllError={pushAllError}
+              onTriggerPushAll={startPushAll}
+              onClearPushAllError={clearPushAllError}
             />
           )}
           {selectedTab === 2 && (
