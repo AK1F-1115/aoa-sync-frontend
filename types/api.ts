@@ -602,6 +602,13 @@ export interface CancelJobResponse {
   message: string;
 }
 
+/** Response from GET /store/catalog/remove/status */
+export type RemoveStatusResponse =
+  | { running: false; job_id: null }
+  | { running: true;  job_id: number; products_matched: number | null; started_at: string }
+  | { running: false; job_id: number; status: 'completed'; products_deleted: number; errors: number; elapsed_seconds: number; started_at: string; finished_at: string }
+  | { running: false; job_id: number; status: 'failed';    error: string; started_at: string; finished_at: string | null };
+
 /** Request body for DELETE /store/catalog/remove */
 export type RemoveCatalogRequest =
   | { skus: string[]; remove_all?: never }

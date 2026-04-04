@@ -25,6 +25,7 @@ import type {
   CancelJobResponse,
   RemoveCatalogRequest,
   RemoveCatalogResponse,
+  RemoveStatusResponse,
   PriceUpdateRequest,
   PriceUpdateResponse,
 } from '@/types/api';
@@ -121,6 +122,21 @@ export async function removeCatalog(
     method: 'DELETE',
     body: JSON.stringify(request),
   });
+}
+
+/**
+ * Poll the status of a running remove-all job.
+ *
+ * Returns:
+ *   { running: false, job_id: null }           — no job ever triggered
+ *   { running: true, ... }                     — job in progress
+ *   { running: false, status: 'completed', ... } — job finished successfully
+ *   { running: false, status: 'failed', ... }    — job failed
+ *
+ * Rate limited to 60 calls/minute.
+ */
+export async function getRemoveStatus(): Promise<RemoveStatusResponse> {
+  return apiFetch<RemoveStatusResponse>('/store/catalog/remove/status');
 }
 
 /**
