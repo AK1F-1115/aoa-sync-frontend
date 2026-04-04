@@ -162,11 +162,13 @@ function SlotCounter({
 // Summary bar
 // ---------------------------------------------------------------------------
 
-function SummaryBar({ summary, isLoading, isError, activeTotal }: {
+function SummaryBar({ summary, isLoading, isError, activeTotal, pushIsSyncing, vdsPhase }: {
   summary: CatalogSummary | undefined;
   isLoading: boolean;
   isError?: boolean;
   activeTotal?: number;
+  pushIsSyncing?: boolean;
+  vdsPhase?: boolean;
 }) {
   if (isLoading && !summary) {
     return (
@@ -206,7 +208,7 @@ function SummaryBar({ summary, isLoading, isError, activeTotal }: {
         : undefined,
     },
     { label: 'Warehouse', value: (summary.retail_count ?? 0).toLocaleString() },
-    { label: 'Dropship — single tier', value: vdsSingleCount.toLocaleString() },
+    { label: 'Dropship — single tier', value: vdsSingleCount.toLocaleString(), sub: pushIsSyncing && vdsPhase ? 'Adding now…' : undefined },
     { label: 'Dropship — w/ Tier 2', value: vdsTier2.toLocaleString() },
     { label: 'Last sync', value: formatDateTime(summary.last_sync_at) },
   ];
@@ -1176,6 +1178,8 @@ function ActiveCatalogTab({
   activeTotal,
   startRemoveAll,
   isRemovingAll,
+  pushIsSyncing,
+  vdsPhase,
 }: {
   summary: CatalogSummary | undefined;
   summaryLoading: boolean;
@@ -1183,6 +1187,8 @@ function ActiveCatalogTab({
   activeTotal: number;
   startRemoveAll: () => void;
   isRemovingAll: boolean;
+  pushIsSyncing: boolean;
+  vdsPhase: boolean;
 }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -1295,7 +1301,7 @@ function ActiveCatalogTab({
       )}
 
       {/* data.total is the most reliable source — it's loaded when products are visible */}
-      <SummaryBar summary={summary} isLoading={summaryLoading} isError={summaryError} activeTotal={data?.total ?? activeTotal} />
+      <SummaryBar summary={summary} isLoading={summaryLoading} isError={summaryError} activeTotal={data?.total ?? activeTotal} pushIsSyncing={pushIsSyncing} vdsPhase={vdsPhase} />
 
       {data && (
         <SlotCounter
@@ -2128,7 +2134,8 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
   const queryClient = useQueryClient();
   const [isSyncing, setIsSyncing]           = useState(false);
   const [liveCount, setLiveCount]           = useState<number | null>(null);
-  const [totalQueued, setTotalQueued]       = useState<number | null>(null);
+  const [retailQueued, setRetailQueued]     = useState<number | null>(null);
+  const [vdsQueued, setVdsQueued]           = useState<number | null>(null);
   const [error, setError]                   = useState<string | null>(null);
   const [alreadyRunning, setAlreadyRunning] = useState<AlreadyRunningInfo | null>(null);
   const [isCancelling, setIsCancelling]     = useState(false);
@@ -2151,6 +2158,8 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
   const finishSync = useCallback((totalPushed: number) => {
     stopPolling();
     setIsSyncing(false);
+    setRetailQueued(null);
+    setVdsQueued(null);
     setAlreadyRunning(null);
     setIsCancelling(false);
     triggeredRef.current = false;
@@ -2177,7 +2186,8 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
         }
         lastTotalPushedRef.current = status.total_pushed;
         setLiveCount(status.total_pushed);
-        setTotalQueued(status.total_retail_queued + status.total_vds_queued);
+        setRetailQueued(status.total_retail_queued);
+        setVdsQueued(status.total_vds_queued);
       } catch { /* network error — retry on next tick */ }
     }, 5_000);
   }, [stopPolling, finishSync]);
@@ -2213,7 +2223,8 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
     lastTotalPushedRef.current = total_pushed;
     setIsSyncing(true);
     setLiveCount(total_pushed);
-    setTotalQueued(total_retail_queued + total_vds_queued);
+    setRetailQueued(total_retail_queued);
+    setVdsQueued(total_vds_queued);
     startStatusPolling();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [summary?.active_job]);
@@ -2235,7 +2246,8 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
       initialActiveRef.current = initial;
       lastTotalPushedRef.current = 0;
       setLiveCount(0);
-      setTotalQueued(null);
+      setRetailQueued(null);
+      setVdsQueued(null);
       setIsSyncing(true);
       setError(null);
       sessionStorage.setItem(
@@ -2311,7 +2323,8 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
     isSyncing,
     isPending: mutation.isPending,
     liveCount,
-    totalQueued,
+    retailQueued,
+    vdsQueued,
     error,
     alreadyRunning,
     isCancelling,
@@ -2332,7 +2345,9 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
 function PushProgressBanner({
   isSyncing,
   liveCount,
-  totalQueued,
+  slotsTotal,
+  retailQueued,
+  vdsQueued,
   alreadyRunning,
   isCancelling,
   onCancel,
@@ -2341,7 +2356,9 @@ function PushProgressBanner({
 }: {
   isSyncing: boolean;
   liveCount: number | null;
-  totalQueued: number | null;
+  slotsTotal: number | null;
+  retailQueued: number | null;
+  vdsQueued: number | null;
   alreadyRunning: AlreadyRunningInfo | null;
   isCancelling: boolean;
   onCancel: () => void;
@@ -2350,14 +2367,22 @@ function PushProgressBanner({
 }) {
   if (!isSyncing && !pushToast) return null;
 
+  // Phase inferred from which queued counts the backend has finalized
+  const phaseLabel =
+    retailQueued === null ? 'Adding warehouse products…' :
+    vdsQueued    === null ? 'Adding dropship products…'  :
+                           'Finishing up…';
+
+  // Use slots_total (retail_cap + vds_cap from settings) as the reliable denominator
+  // across both phases — avoids the 500/500 freeze when retail finishes before VDS starts
   const progressPct =
-    totalQueued != null && totalQueued > 0 && liveCount != null
-      ? Math.min(100, Math.round((liveCount / totalQueued) * 100))
+    slotsTotal != null && slotsTotal > 0 && liveCount != null
+      ? Math.min(100, Math.round((liveCount / slotsTotal) * 100))
       : 0;
 
   const progressText =
-    liveCount != null && totalQueued != null && totalQueued > 0
-      ? `${liveCount.toLocaleString()} of ${totalQueued.toLocaleString()} products added`
+    liveCount != null && slotsTotal != null
+      ? `${liveCount.toLocaleString()} of ${slotsTotal.toLocaleString()} products added`
       : liveCount != null && liveCount > 0
       ? `${liveCount.toLocaleString()} products added so far…`
       : 'Starting…';
@@ -2371,6 +2396,18 @@ function PushProgressBanner({
     <Button variant="secondary" tone="critical" size="slim" onClick={onCancel}>
       Cancel push
     </Button>
+  );
+
+  const progressContent = slotsTotal != null && liveCount != null ? (
+    <BlockStack gap="100">
+      <Text as="p">{progressText}</Text>
+      <ProgressBar progress={progressPct} size="small" />
+    </BlockStack>
+  ) : (
+    <InlineStack gap="200" blockAlign="center">
+      <Spinner size="small" />
+      <Text as="p">{progressText}</Text>
+    </InlineStack>
   );
 
   return (
@@ -2393,30 +2430,15 @@ function PushProgressBanner({
                   : ' is running.'}
                 {' '}Tracking its progress below.
               </Text>
-              {liveCount != null && totalQueued != null && totalQueued > 0 && (
-                <BlockStack gap="100">
-                  <Text as="p" tone="subdued" variant="bodySm">{progressText}</Text>
-                  <ProgressBar progress={progressPct} size="small" />
-                </BlockStack>
-              )}
+              {progressContent}
               {cancelButton}
             </BlockStack>
           </Banner>
         )}
         {isSyncing && !alreadyRunning && (
-          <Banner title="Adding products to your store…" tone="info">
+          <Banner title={phaseLabel} tone="info">
             <BlockStack gap="200">
-              {liveCount != null && totalQueued != null && totalQueued > 0 ? (
-                <BlockStack gap="100">
-                  <Text as="p">{progressText}</Text>
-                  <ProgressBar progress={progressPct} size="small" />
-                </BlockStack>
-              ) : (
-                <InlineStack gap="200" blockAlign="center">
-                  <Spinner size="small" />
-                  <Text as="p">{progressText}</Text>
-                </InlineStack>
-              )}
+              {progressContent}
               {cancelButton}
             </BlockStack>
           </Banner>
@@ -2726,12 +2748,26 @@ export default function ProductsPage() {
   });
   const total = activeCountData?.total ?? 0;
 
+  // Settings fetched at page level so we can compute the slots denominator for the push
+  // progress bar. Uses the same queryKey as ActiveCatalogTab — no extra network call.
+  const { data: pageSettings } = useQuery({
+    queryKey: ['settings'],
+    queryFn: getSettings,
+    staleTime: 60_000,
+  });
+  // slotsTotal = retail_cap + vds_cap; null for Pro (unlimited) stores
+  const pushSlotsTotal =
+    pageSettings?.retail_slot_cap != null && pageSettings?.vds_slot_cap != null
+      ? pageSettings.retail_slot_cap + pageSettings.vds_slot_cap
+      : null;
+
   // Push-all progress lives here so it survives tab switches
   const {
     isSyncing:      pushAllIsSyncing,
     isPending:      pushAllIsPending,
     liveCount:      pushAllLiveCount,
-    totalQueued:    pushAllTotalQueued,
+    retailQueued:   pushAllRetailQueued,
+    vdsQueued:      pushAllVdsQueued,
     error:          pushAllError,
     alreadyRunning: pushAllAlreadyRunning,
     isCancelling:   pushAllIsCancelling,
@@ -2741,6 +2777,9 @@ export default function ProductsPage() {
     cancelPushAll,
     clearError:     clearPushAllError,
   } = usePushAllProgress(summary);
+
+  // true when retail is done but VDS is still running — annotates the summary bar dropship count
+  const pushVdsPhase = pushAllIsSyncing && pushAllRetailQueued !== null && pushAllVdsQueued === null;
 
   // Remove-all progress lives here so it survives tab switches
   const {
@@ -2778,7 +2817,9 @@ export default function ProductsPage() {
       <PushProgressBanner
         isSyncing={pushAllIsSyncing}
         liveCount={pushAllLiveCount}
-        totalQueued={pushAllTotalQueued}
+        slotsTotal={pushSlotsTotal}
+        retailQueued={pushAllRetailQueued}
+        vdsQueued={pushAllVdsQueued}
         alreadyRunning={pushAllAlreadyRunning}
         isCancelling={pushAllIsCancelling}
         onCancel={cancelPushAll}
@@ -2805,6 +2846,8 @@ export default function ProductsPage() {
               activeTotal={total}
               startRemoveAll={startRemoveAll}
               isRemovingAll={removeAllIsRemoving}
+              pushIsSyncing={pushAllIsSyncing}
+              vdsPhase={pushVdsPhase}
             />
           )}
           {selectedTab === 1 && (

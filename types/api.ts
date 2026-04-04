@@ -529,8 +529,10 @@ export interface CatalogSummary {
   /** Active push job snapshot — null when no job is running */
   active_job: {
     job_id: number;
-    total_retail_queued: number;
-    total_vds_queued: number;
+    /** null while retail phase is still running */
+    total_retail_queued: number | null;
+    /** null during retail phase AND while VDS phase is still running */
+    total_vds_queued: number | null;
     total_pushed: number;
     started_at: string;
   } | null;
@@ -589,8 +591,10 @@ export type PushStatusResponse =
   | {
       running: true;
       job_id: number;
-      total_retail_queued: number;
-      total_vds_queued: number;
+      /** null while retail phase is still running */
+      total_retail_queued: number | null;
+      /** null during retail phase AND while VDS phase is still running */
+      total_vds_queued: number | null;
       total_pushed: number;
       started_at: string;
     };
