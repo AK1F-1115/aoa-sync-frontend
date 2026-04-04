@@ -2145,6 +2145,7 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
   const jobIdRef           = useRef<number | null>(null);
   const initialActiveRef   = useRef(0);
   const lastTotalPushedRef = useRef(0);
+  const pollTickRef        = useRef(0); // counts poll ticks for throttling slot-counter refresh
   // Synchronous lock — set before mutation.mutate() fires, checked before React can re-render.
   const triggeredRef = useRef(false);
 
@@ -2177,9 +2178,10 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
 
   const startStatusPolling = useCallback(() => {
     stopPolling();
+    pollTickRef.current = 0;
     pollIntervalRef.current = setInterval(async () => {
-      // Fetch push status and catalog summary in parallel so all UI elements
-      // update in the same render batch — no lag between progress bar / summary / slots
+      // Fetch push status and catalog summary in parallel — all UI updates land
+      // in the same React render batch with no stagger between banner / summary / slots
       const [statusResult, summaryResult] = await Promise.allSettled([
         getPushStatus(),
         getCatalogSummary(),
@@ -2191,8 +2193,19 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
           finishSync(lastTotalPushedRef.current);
           return;
         }
-        lastTotalPushedRef.current = status.total_pushed;
-        setLiveCount(status.total_pushed);
+        // Use summary.total_active as the live counter rather than status.total_pushed.
+        // total_pushed stops incrementing once retail finishes — it does not continue
+        // through the VDS phase — so the progress bar would freeze at 50%.
+        // total_active from the summary IS updated live across both phases.
+        if (summaryResult.status === 'fulfilled') {
+          const addedSoFar = Math.max(0, (summaryResult.value.total_active ?? 0) - initialActiveRef.current);
+          lastTotalPushedRef.current = addedSoFar;
+          setLiveCount(addedSoFar);
+        } else {
+          // Summary failed this tick — fall back to status.total_pushed
+          lastTotalPushedRef.current = status.total_pushed;
+          setLiveCount(status.total_pushed);
+        }
         setRetailQueued(status.total_retail_queued);
         setVdsQueued(status.total_vds_queued);
       }
@@ -2202,9 +2215,12 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
         queryClient.setQueryData(['catalogSummary'], summaryResult.value);
       }
 
-      // Slot counter reads from the paginated catalog query; invalidate so it
-      // background-refetches. keepPreviousData means no visible flicker.
-      void queryClient.invalidateQueries({ queryKey: ['catalog', 'active'] });
+      // Slot counter (paginated catalog query) only needs updating every ~5 s
+      // to avoid excessive re-renders — refresh every other tick at 2.5 s interval
+      pollTickRef.current += 1;
+      if (pollTickRef.current % 2 === 0) {
+        void queryClient.invalidateQueries({ queryKey: ['catalog', 'active'] });
+      }
     }, 2_500);
   }, [stopPolling, finishSync, queryClient]);
 
