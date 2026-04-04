@@ -2356,9 +2356,9 @@ function PushProgressBanner({
       : 0;
 
   const progressText =
-    liveCount != null && totalQueued != null
+    liveCount != null && totalQueued != null && totalQueued > 0
       ? `${liveCount.toLocaleString()} of ${totalQueued.toLocaleString()} products added`
-      : liveCount != null
+      : liveCount != null && liveCount > 0
       ? `${liveCount.toLocaleString()} products added so far…`
       : 'Starting…';
 
@@ -2452,7 +2452,7 @@ function useRemoveAllProgress() {
     const n = productsDeleted;
     setRemoveToast({
       message: n > 0
-        ? `✅ ${n.toLocaleString()} product${n !== 1 ? 's' : ''} removed from your AOA catalog. Note: Shopify’s admin may take up to 30 minutes to fully reflect this — your slot count here has already updated.`
+        ? `${n.toLocaleString()} product${n !== 1 ? 's' : ''} removed from your AOA catalog. Note: Shopify’s admin may take up to 30 minutes to fully reflect this — your slot count here has already updated.`
         : 'Removal complete — your catalog has been cleared.',
       tone: 'success',
     });
