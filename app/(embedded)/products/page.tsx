@@ -1174,11 +1174,15 @@ function ActiveCatalogTab({
   summaryLoading,
   summaryError,
   activeTotal,
+  startRemoveAll,
+  isRemovingAll,
 }: {
   summary: CatalogSummary | undefined;
   summaryLoading: boolean;
   summaryError: boolean;
   activeTotal: number;
+  startRemoveAll: () => void;
+  isRemovingAll: boolean;
 }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
@@ -1317,9 +1321,9 @@ function ActiveCatalogTab({
         </Banner>
       )}
 
-      {removeMutation.isSuccess && (
+      {removeMutation.isSuccess && !removeMutation.data.job_started && (
         <Banner
-          title={`${removeMutation.data.removed} product${removeMutation.data.removed !== 1 ? 's' : ''} removed`}
+          title={`${removeMutation.data.removed ?? 0} product${(removeMutation.data.removed ?? 0) !== 1 ? 's' : ''} removed`}
           tone="success"
           onDismiss={() => removeMutation.reset()}
         >
@@ -1368,7 +1372,7 @@ function ActiveCatalogTab({
               </InlineStack>
             ) : <span />}
             {data && data.total > 0 && (
-              <Button tone="critical" variant="plain" onClick={() => setShowRemoveAllModal(true)}>
+              <Button tone="critical" variant="plain" disabled={isRemovingAll} onClick={() => setShowRemoveAllModal(true)}>
                 Remove all ({data.total.toLocaleString()}) from Shopify…
               </Button>
             )}
@@ -1460,10 +1464,11 @@ function ActiveCatalogTab({
           content: `Remove all${data?.total != null ? ` (${data.total.toLocaleString()})` : ''} products`,
           onAction: () => {
             setShowRemoveAllModal(false);
-            removeMutation.mutate({ remove_all: true });
+            startRemoveAll();
           },
           destructive: true,
-          loading: removeMutation.isPending,
+          loading: isRemovingAll,
+          disabled: isRemovingAll,
         }}
         secondaryActions={[{ content: 'Cancel', onAction: () => setShowRemoveAllModal(false) }]}
       >
@@ -2422,6 +2427,217 @@ function PushProgressBanner({
 }
 
 // ---------------------------------------------------------------------------
+// Remove-all progress — lives at page level so it persists across tab switches
+// ---------------------------------------------------------------------------
+
+const REMOVE_PROGRESS_KEY = 'aoa_remove_in_progress';
+
+function useRemoveAllProgress(summary: CatalogSummary | undefined) {
+  const queryClient = useQueryClient();
+  const [isRemoving, setIsRemoving]     = useState(false);
+  const [liveCount, setLiveCount]       = useState<number | null>(null);
+  const [initialCount, setInitialCount] = useState<number | null>(null);
+  const [error, setError]               = useState<string | null>(null);
+  const [removeToast, setRemoveToast]   = useState<{ message: string; tone: 'success' | 'info' } | null>(null);
+
+  const pollIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const initialCountRef = useRef(0);
+  const stableRef       = useRef<{ count: number; ticks: number }>({ count: -1, ticks: 0 });
+  const triggeredRef    = useRef(false);
+
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+  }, []);
+
+  const finishRemove = useCallback((finalActive: number) => {
+    stopPolling();
+    const removed = Math.max(0, initialCountRef.current - finalActive);
+    setIsRemoving(false);
+    triggeredRef.current = false;
+    sessionStorage.removeItem(REMOVE_PROGRESS_KEY);
+    setRemoveToast({
+      message: removed > 0
+        ? `✅ Done — ${removed.toLocaleString()} product${removed !== 1 ? 's' : ''} removed from your store`
+        : 'Remove complete',
+      tone: 'success',
+    });
+    void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+    void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
+  }, [stopPolling, queryClient]);
+
+  const startSummaryPolling = useCallback(() => {
+    stopPolling();
+    stableRef.current = { count: -1, ticks: 0 };
+    pollIntervalRef.current = setInterval(async () => {
+      try {
+        const s = await getCatalogSummary();
+        const current = s.total_active ?? 0;
+        setLiveCount(current);
+        if (current === 0) { finishRemove(0); return; }
+        // Stable for 3 consecutive ticks → job finished
+        if (current === stableRef.current.count) {
+          stableRef.current.ticks += 1;
+          if (stableRef.current.ticks >= 3) { finishRemove(current); }
+        } else {
+          stableRef.current = { count: current, ticks: 1 };
+        }
+      } catch { /* network error — retry on next tick */ }
+    }, 5_000);
+  }, [stopPolling, finishRemove]);
+
+  // Mount: resume from sessionStorage
+  useEffect(() => {
+    const stored = sessionStorage.getItem(REMOVE_PROGRESS_KEY);
+    if (!stored) return;
+    try {
+      const { startCount, startedAt } = JSON.parse(stored) as { startCount: number; startedAt: string };
+      const ageMs = Date.now() - new Date(startedAt).getTime();
+      if (ageMs > 15 * 60_000) { sessionStorage.removeItem(REMOVE_PROGRESS_KEY); return; }
+      initialCountRef.current = startCount;
+      setInitialCount(startCount);
+      setIsRemoving(true);
+      startSummaryPolling();
+    } catch { sessionStorage.removeItem(REMOVE_PROGRESS_KEY); }
+    return () => stopPolling();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Cleanup on unmount
+  useEffect(() => () => stopPolling(), [stopPolling]);
+
+  // Auto-dismiss toast after 6 s
+  useEffect(() => {
+    if (!removeToast) return;
+    const t = setTimeout(() => setRemoveToast(null), 6_000);
+    return () => clearTimeout(t);
+  }, [removeToast]);
+
+  const mutation = useMutation({
+    mutationFn: () => removeCatalog({ remove_all: true }),
+    onMutate: () => {
+      const start = summary?.total_active ?? 0;
+      initialCountRef.current = start;
+      setInitialCount(start);
+      setLiveCount(start);
+      setIsRemoving(true);
+      setError(null);
+      sessionStorage.setItem(
+        REMOVE_PROGRESS_KEY,
+        JSON.stringify({ startCount: start, startedAt: new Date().toISOString() }),
+      );
+    },
+    onSuccess: (result) => {
+      if (!result.job_started) {
+        // Unexpected sync response for remove_all — finish gracefully
+        setIsRemoving(false);
+        triggeredRef.current = false;
+        sessionStorage.removeItem(REMOVE_PROGRESS_KEY);
+        void queryClient.invalidateQueries({ queryKey: ['catalog'] });
+        void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
+        return;
+      }
+      // 202 async — start polling summary for progress
+      startSummaryPolling();
+    },
+    onError: (err) => {
+      stopPolling();
+      setIsRemoving(false);
+      triggeredRef.current = false;
+      sessionStorage.removeItem(REMOVE_PROGRESS_KEY);
+      setError(
+        err instanceof ApiError && err.status === 409
+          ? 'A removal job is already in progress. Wait for it to finish or refresh the page.'
+          : err instanceof ApiError ? err.message : 'Failed to remove products. Please try again.',
+      );
+    },
+  });
+
+  return {
+    isRemoving,
+    liveCount,
+    initialCount,
+    error,
+    removeToast,
+    setRemoveToast,
+    startRemoveAll: () => {
+      if (triggeredRef.current || mutation.isPending) return; // synchronous lock
+      triggeredRef.current = true;
+      setError(null);
+      mutation.mutate();
+    },
+    clearError: () => setError(null),
+  };
+}
+
+function RemoveProgressBanner({
+  isRemoving,
+  liveCount,
+  initialCount,
+  error,
+  onClearError,
+  removeToast,
+  setRemoveToast,
+}: {
+  isRemoving: boolean;
+  liveCount: number | null;
+  initialCount: number | null;
+  error: string | null;
+  onClearError: () => void;
+  removeToast: { message: string; tone: 'success' | 'info' } | null;
+  setRemoveToast: (v: null) => void;
+}) {
+  if (!isRemoving && !removeToast && !error) return null;
+
+  const removedSoFar =
+    initialCount != null && liveCount != null ? Math.max(0, initialCount - liveCount) : null;
+  const progressPct =
+    initialCount != null && initialCount > 0 && removedSoFar != null
+      ? Math.min(100, Math.round((removedSoFar / initialCount) * 100))
+      : 0;
+  const progressText =
+    removedSoFar != null && initialCount != null
+      ? `${removedSoFar.toLocaleString()} of ${initialCount.toLocaleString()} products removed`
+      : 'Removing products…';
+
+  return (
+    <Box paddingBlockEnd="400">
+      <BlockStack gap="200">
+        {error && (
+          <Banner title="Remove failed" tone="critical" onDismiss={onClearError}>
+            <Text as="p">{error}</Text>
+          </Banner>
+        )}
+        {removeToast && (
+          <Banner tone={removeToast.tone} onDismiss={() => setRemoveToast(null)}>
+            <Text as="p">{removeToast.message}</Text>
+          </Banner>
+        )}
+        {isRemoving && (
+          <Banner title="Removing products from your store…" tone="warning">
+            <BlockStack gap="200">
+              {removedSoFar != null && initialCount != null && initialCount > 0 ? (
+                <BlockStack gap="100">
+                  <Text as="p">{progressText}</Text>
+                  <ProgressBar progress={progressPct} size="small" />
+                </BlockStack>
+              ) : (
+                <InlineStack gap="200" blockAlign="center">
+                  <Spinner size="small" />
+                  <Text as="p">Removing products…</Text>
+                </InlineStack>
+              )}
+            </BlockStack>
+          </Banner>
+        )}
+      </BlockStack>
+    </Box>
+  );
+}
+
+// ---------------------------------------------------------------------------
 
 export default function ProductsPage() {
   // useSearchParams kept for SSR compatibility; URL state is read via window.location on client
@@ -2523,6 +2739,18 @@ export default function ProductsPage() {
     clearError:     clearPushAllError,
   } = usePushAllProgress(summary);
 
+  // Remove-all progress lives here so it survives tab switches
+  const {
+    isRemoving:   removeAllIsRemoving,
+    liveCount:    removeAllLiveCount,
+    initialCount: removeAllInitialCount,
+    error:        removeAllError,
+    removeToast,
+    setRemoveToast,
+    startRemoveAll,
+    clearError:   clearRemoveAllError,
+  } = useRemoveAllProgress(summary);
+
   if (summaryLoading && !summary) {
     return (
       <SkeletonPage title="Products">
@@ -2555,11 +2783,28 @@ export default function ProductsPage() {
         pushToast={pushToast}
         setPushToast={setPushToast}
       />
+      {/* Page-level remove-all banner — visible on all tabs so it survives navigation */}
+      <RemoveProgressBanner
+        isRemoving={removeAllIsRemoving}
+        liveCount={removeAllLiveCount}
+        initialCount={removeAllInitialCount}
+        error={removeAllError}
+        onClearError={clearRemoveAllError}
+        removeToast={removeToast}
+        setRemoveToast={setRemoveToast}
+      />
 
       <Tabs tabs={catalogTabs} selected={selectedTab} onSelect={handleTabSelect}>
         <Box paddingBlockStart="400">
           {selectedTab === 0 && (
-            <ActiveCatalogTab summary={summary} summaryLoading={summaryLoading} summaryError={summaryError} activeTotal={total} />
+            <ActiveCatalogTab
+              summary={summary}
+              summaryLoading={summaryLoading}
+              summaryError={summaryError}
+              activeTotal={total}
+              startRemoveAll={startRemoveAll}
+              isRemovingAll={removeAllIsRemoving}
+            />
           )}
           {selectedTab === 1 && (
             <AvailableCatalogTab

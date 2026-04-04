@@ -607,11 +607,20 @@ export type RemoveCatalogRequest =
   | { skus: string[]; remove_all?: never }
   | { remove_all: true; skus?: never };
 
-/** Success response from DELETE /store/catalog/remove */
+/**
+ * Success response from DELETE /store/catalog/remove
+ *
+ * 200 sync (SKU list):   job_started is absent/false; removed and failed are present.
+ * 202 async (remove_all): job_started is true; removed and failed are absent.
+ */
 export interface RemoveCatalogResponse {
   ok: boolean;
-  removed: number;
-  failed: number;
+  /** True only for 202 async responses (remove_all path) */
+  job_started?: boolean;
+  /** Products removed — present on 200 sync responses only */
+  removed?: number;
+  /** Products that failed to remove — present on 200 sync responses only */
+  failed?: number;
   slots_used: number;
   slots_total: number | null;
   slots_remaining: number | null;
