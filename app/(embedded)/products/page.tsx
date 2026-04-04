@@ -2178,8 +2178,15 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
   const startStatusPolling = useCallback(() => {
     stopPolling();
     pollIntervalRef.current = setInterval(async () => {
-      try {
-        const status = await getPushStatus();
+      // Fetch push status and catalog summary in parallel so all UI elements
+      // update in the same render batch — no lag between progress bar / summary / slots
+      const [statusResult, summaryResult] = await Promise.allSettled([
+        getPushStatus(),
+        getCatalogSummary(),
+      ]);
+
+      if (statusResult.status === 'fulfilled') {
+        const status = statusResult.value;
         if (!status.running) {
           finishSync(lastTotalPushedRef.current);
           return;
@@ -2188,11 +2195,17 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
         setLiveCount(status.total_pushed);
         setRetailQueued(status.total_retail_queued);
         setVdsQueued(status.total_vds_queued);
-        // Refresh summary bar and slot counter in real time while job runs
-        void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
-        void queryClient.invalidateQueries({ queryKey: ['catalog', 'active'] });
-      } catch { /* network error — retry on next tick */ }
-    }, 5_000);
+      }
+
+      if (summaryResult.status === 'fulfilled') {
+        // Write directly into the query cache — no second round-trip needed
+        queryClient.setQueryData(['catalogSummary'], summaryResult.value);
+      }
+
+      // Slot counter reads from the paginated catalog query; invalidate so it
+      // background-refetches. keepPreviousData means no visible flicker.
+      void queryClient.invalidateQueries({ queryKey: ['catalog', 'active'] });
+    }, 2_500);
   }, [stopPolling, finishSync, queryClient]);
 
   // Mount effect: resume from sessionStorage (available before summary loads)
