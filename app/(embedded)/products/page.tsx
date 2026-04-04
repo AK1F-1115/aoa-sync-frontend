@@ -2188,9 +2188,12 @@ function usePushAllProgress(summary: CatalogSummary | undefined) {
         setLiveCount(status.total_pushed);
         setRetailQueued(status.total_retail_queued);
         setVdsQueued(status.total_vds_queued);
+        // Refresh summary bar and slot counter in real time while job runs
+        void queryClient.invalidateQueries({ queryKey: ['catalogSummary'] });
+        void queryClient.invalidateQueries({ queryKey: ['catalog', 'active'] });
       } catch { /* network error — retry on next tick */ }
     }, 5_000);
-  }, [stopPolling, finishSync]);
+  }, [stopPolling, finishSync, queryClient]);
 
   // Mount effect: resume from sessionStorage (available before summary loads)
   useEffect(() => {
