@@ -36,6 +36,14 @@ import { getPlans, subscribeToPlan, cancelSubscription } from '@/lib/api/billing
 import { getSettings, updateSettings } from '@/lib/api/settings';
 import { getCollections, bootstrapCollections, reconcileCollections } from '@/lib/api/collections';
 import { getShipping, bootstrapShipping } from '@/lib/api/shipping';
+import {
+  getPaymentMethod,
+  deletePaymentMethod,
+  createSetupIntent,
+  savePaymentMethod,
+} from '@/lib/api/orders';
+import { Elements, CardElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { loadStripe } from '@stripe/stripe-js';
 import { useMerchantContext } from '@/hooks/useMerchantContext';
 import { STATIC_PLANS } from '@/lib/plans';
 import { ApiError } from '@/lib/api/client';
@@ -48,11 +56,12 @@ import type { SubscriptionInfo, ShippingState } from '@/types/api';
 // ---------------------------------------------------------------------------
 
 const TABS = [
-  { id: 'billing',     content: 'Billing'      },
-  { id: 'sync',        content: 'Sync Health'  },
-  { id: 'markup',      content: 'Markup'       },
-  { id: 'collections', content: 'Collections'  },
-  { id: 'shipping',    content: 'Shipping'     },
+  { id: 'billing',     content: 'Billing'          },
+  { id: 'sync',        content: 'Sync Health'       },
+  { id: 'markup',      content: 'Markup'            },
+  { id: 'collections', content: 'Collections'       },
+  { id: 'shipping',    content: 'Shipping'          },
+  { id: 'payment',     content: 'Payment Method'    },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1336,11 +1345,325 @@ function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
 }
 
 // ---------------------------------------------------------------------------
+// Payment Tab — Stripe card management
+// ---------------------------------------------------------------------------
+
+/**
+ * Inner form rendered inside <Elements>.  Needs stripe/elements hooks which
+ * must be called inside an Elements provider.
+ */
+function CardSetupForm({
+  clientSecret,
+  onSuccess,
+  onCancel,
+}: {
+  clientSecret: string;
+  onSuccess: () => void;
+  onCancel: () => void;
+}) {
+  const stripe   = useStripe();
+  const elements = useElements();
+  const queryClient = useQueryClient();
+  const [formError, setFormError] = useState<string | null>(null);
+  const [saving, setSaving]       = useState(false);
+
+  const saveMutation = useMutation({
+    mutationFn: savePaymentMethod,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['stripePaymentMethod'] });
+      setSaving(false);
+      onSuccess();
+    },
+    onError: (err) => {
+      setFormError(
+        err instanceof ApiError ? err.message : 'Could not save card. Please try again.',
+      );
+      setSaving(false);
+    },
+  });
+
+  async function handleSubmit() {
+    if (!stripe || !elements) return;
+    const cardElement = elements.getElement(CardElement);
+    if (!cardElement) return;
+
+    setFormError(null);
+    setSaving(true);
+
+    const { error: stripeError, setupIntent } = await stripe.confirmCardSetup(clientSecret, {
+      payment_method: { card: cardElement },
+    });
+
+    if (stripeError) {
+      setFormError(stripeError.message ?? 'Card setup failed. Please try again.');
+      setSaving(false);
+      return;
+    }
+
+    if (setupIntent?.payment_method) {
+      saveMutation.mutate({ payment_method_id: setupIntent.payment_method as string });
+    }
+  }
+
+  return (
+    <BlockStack gap="400">
+      <div
+        style={{
+          border: '1px solid var(--p-color-border)',
+          borderRadius: '8px',
+          padding: '12px',
+          background: 'var(--p-color-bg-surface)',
+        }}
+      >
+        <CardElement options={{ hidePostalCode: true }} />
+      </div>
+      {formError && (
+        <Banner tone="critical">
+          <Text as="p">{formError}</Text>
+        </Banner>
+      )}
+      <InlineStack gap="300">
+        <Button
+          variant="primary"
+          onClick={handleSubmit}
+          loading={saving || saveMutation.isPending}
+          disabled={!stripe}
+        >
+          Save card
+        </Button>
+        <Button onClick={onCancel} disabled={saving || saveMutation.isPending}>
+          Cancel
+        </Button>
+      </InlineStack>
+    </BlockStack>
+  );
+}
+
+function PaymentTab() {
+  const queryClient = useQueryClient();
+
+  const [removeConfirmOpen, setRemoveConfirmOpen] = useState(false);
+  const [setupOpen,         setSetupOpen]         = useState(false);
+  const [setupInitialising, setSetupInitialising] = useState(false);
+  const [setupError,        setSetupError]        = useState<string | null>(null);
+  const [stripePromise,     setStripePromise]     =
+    useState<ReturnType<typeof loadStripe> | null>(null);
+  const [setupClientSecret, setSetupClientSecret] = useState<string | null>(null);
+
+  const {
+    data: paymentMethod,
+    isLoading,
+    isError,
+    error: pmError,
+    refetch,
+  } = useQuery({
+    queryKey: ['stripePaymentMethod'],
+    queryFn:  getPaymentMethod,
+    staleTime: 60_000,
+  });
+
+  const removeMutation = useMutation({
+    mutationFn: deletePaymentMethod,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['stripePaymentMethod'] });
+      setRemoveConfirmOpen(false);
+    },
+  });
+
+  async function handleOpenSetup() {
+    setSetupError(null);
+    setSetupInitialising(true);
+    try {
+      const intent = await createSetupIntent();
+      // Persist publishable key for 3DS confirmation on the order detail page
+      sessionStorage.setItem('aoa_stripe_pk', intent.stripe_publishable_key);
+      setStripePromise(loadStripe(intent.stripe_publishable_key));
+      setSetupClientSecret(intent.client_secret);
+      setSetupOpen(true);
+    } catch (err) {
+      setSetupError(
+        err instanceof ApiError
+          ? err.message
+          : 'Could not start card setup. Please try again.',
+      );
+    } finally {
+      setSetupInitialising(false);
+    }
+  }
+
+  function handleSetupSuccess() {
+    setSetupOpen(false);
+    setSetupClientSecret(null);
+    setStripePromise(null);
+  }
+
+  function handleCancelSetup() {
+    setSetupOpen(false);
+    setSetupClientSecret(null);
+    setStripePromise(null);
+  }
+
+  if (isLoading) return <Card><SkeletonBodyText lines={4} /></Card>;
+
+  if (isError) {
+    return (
+      <Banner
+        title="Could not load payment method"
+        tone="critical"
+        action={{ content: 'Retry', onAction: refetch }}
+      >
+        <Text as="p">
+          {pmError instanceof ApiError
+            ? pmError.message
+            : 'An unexpected error occurred.'}
+        </Text>
+      </Banner>
+    );
+  }
+
+  const hasCard = paymentMethod?.has_payment_method ?? false;
+  const cardBrand = paymentMethod?.card_brand
+    ? paymentMethod.card_brand.charAt(0).toUpperCase() + paymentMethod.card_brand.slice(1)
+    : 'Card';
+
+  return (
+    <BlockStack gap="400">
+      {/* ---- Remove card confirm modal ---- */}
+      <Modal
+        open={removeConfirmOpen}
+        title="Remove payment method"
+        onClose={() => setRemoveConfirmOpen(false)}
+        primaryAction={{
+          content: 'Remove',
+          destructive: true,
+          loading: removeMutation.isPending,
+          onAction: () => removeMutation.mutate(),
+        }}
+        secondaryActions={[{
+          content: 'Cancel',
+          onAction: () => setRemoveConfirmOpen(false),
+        }]}
+      >
+        <Modal.Section>
+          <BlockStack gap="300">
+            <Text as="p">
+              Are you sure you want to remove your saved card? You will not be able to
+              purchase orders until you add a new payment method.
+            </Text>
+            {removeMutation.isError && (
+              <Banner tone="critical">
+                <Text as="p">
+                  {removeMutation.error instanceof ApiError
+                    ? removeMutation.error.message
+                    : 'Could not remove card. Please try again.'}
+                </Text>
+              </Banner>
+            )}
+          </BlockStack>
+        </Modal.Section>
+      </Modal>
+
+      {/* ---- Setup initialisation error ---- */}
+      {setupError && (
+        <Banner
+          title="Card setup failed"
+          tone="critical"
+          onDismiss={() => setSetupError(null)}
+        >
+          <Text as="p">{setupError}</Text>
+        </Banner>
+      )}
+
+      {/* ---- Saved card / empty state ---- */}
+      <Card>
+        <BlockStack gap="400">
+          <InlineStack align="space-between">
+            <Text variant="headingMd" as="h2">Payment Method</Text>
+            {hasCard && <Badge tone="success">Saved</Badge>}
+          </InlineStack>
+          <Divider />
+          {hasCard ? (
+            <InlineStack align="space-between" blockAlign="center">
+              <BlockStack gap="100">
+                <Text as="p" fontWeight="medium">
+                  {cardBrand} ending in {paymentMethod!.card_last4}
+                </Text>
+                <Text as="p" tone="subdued" variant="bodySm">
+                  Used to pay for AOA order purchases
+                </Text>
+              </BlockStack>
+              <InlineStack gap="300">
+                <Button
+                  onClick={handleOpenSetup}
+                  loading={setupInitialising}
+                  disabled={setupInitialising || setupOpen}
+                >
+                  Replace card
+                </Button>
+                <Button
+                  tone="critical"
+                  onClick={() => setRemoveConfirmOpen(true)}
+                  disabled={setupInitialising || setupOpen}
+                >
+                  Remove
+                </Button>
+              </InlineStack>
+            </InlineStack>
+          ) : (
+            <BlockStack gap="300">
+              <Text as="p" tone="subdued">
+                No payment method saved. Add a card to enable order purchasing.
+              </Text>
+              <InlineStack>
+                <Button
+                  variant="primary"
+                  onClick={handleOpenSetup}
+                  loading={setupInitialising}
+                  disabled={setupInitialising || setupOpen}
+                >
+                  Add card
+                </Button>
+              </InlineStack>
+            </BlockStack>
+          )}
+        </BlockStack>
+      </Card>
+
+      {/* ---- Inline card entry form (shown after setup intent is created) ---- */}
+      {setupOpen && stripePromise && setupClientSecret && (
+        <Card>
+          <BlockStack gap="300">
+            <Text variant="headingMd" as="h2">Enter card details</Text>
+            <Divider />
+            <Elements stripe={stripePromise} options={{ clientSecret: setupClientSecret }}>
+              <CardSetupForm
+                clientSecret={setupClientSecret}
+                onSuccess={handleSetupSuccess}
+                onCancel={handleCancelSetup}
+              />
+            </Elements>
+          </BlockStack>
+        </Card>
+      )}
+    </BlockStack>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Page
 // ---------------------------------------------------------------------------
 
 export default function SettingsPage() {
-  const [selectedTab, setSelectedTab] = useState(0);
+  const [selectedTab, setSelectedTab] = useState(() => {
+    if (typeof window === 'undefined') return 0;
+    const tab = new URLSearchParams(window.location.search).get('tab');
+    if (tab === 'payment') return 5;
+    if (tab === 'shipping') return 4;
+    if (tab === 'collections') return 3;
+    if (tab === 'markup') return 2;
+    if (tab === 'sync') return 1;
+    return 0;
+  });
   const {
     shop,
     syncHealth,
@@ -1389,7 +1712,7 @@ export default function SettingsPage() {
   return (
     <Page
       title="Settings"
-      subtitle="Billing, sync health, markup, collections, and shipping"
+      subtitle="Billing, sync health, markup, collections, shipping, and payment"
     >
       <Tabs tabs={TABS} selected={selectedTab} onSelect={setSelectedTab}>
         <Box paddingBlockStart="500">
@@ -1398,6 +1721,7 @@ export default function SettingsPage() {
           {selectedTab === 2 && <MarkupTab />}
           {selectedTab === 3 && <CollectionsTab isFreePlan={isFreePlan} />}
           {selectedTab === 4 && <ShippingTab shopDomain={shopDomain} />}
+          {selectedTab === 5 && <PaymentTab />}
         </Box>
       </Tabs>
     </Page>

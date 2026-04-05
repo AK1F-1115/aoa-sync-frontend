@@ -727,3 +727,93 @@ export interface WishlistRemoveResponse {
   /** Number of items deleted — present on clear-all, 0 if wishlist was already empty */
   removed?: number;
 }
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+export type OrderStatus =
+  | 'pending_purchase'
+  | 'purchased'
+  | 'fulfillment_sent'
+  | 'shipped'
+  | 'delivered'
+  | 'cancelled'
+  | 'no_aoa_items';
+
+export interface OrderListItem {
+  id: number;
+  shopify_order_id: string;
+  shopify_order_number: string;
+  customer_email: string;
+  subtotal_price: string;
+  aoa_total_cost: string;
+  status: OrderStatus;
+  tracking_number: string | null;
+  ordered_at: string;
+  purchased_at: string | null;
+  created_at: string;
+}
+
+export interface OrderItem {
+  id: number;
+  aoa_sku: string;
+  supplier_sku: string;
+  supplier: string;
+  product_name: string;
+  quantity: number;
+  shopify_price: string;
+  merchant_cost: string;
+  line_total_cost: string;
+}
+
+export interface OrderDetail extends OrderListItem {
+  store_id: number;
+  stripe_payment_intent_id: string | null;
+  stripe_payment_status: string | null;
+  fulfilled_at: string | null;
+  updated_at: string;
+  items: OrderItem[];
+}
+
+export interface OrderListResponse {
+  orders: OrderListItem[];
+  total: number;
+  page: number;
+  per_page: number;
+  pages: number;
+}
+
+export interface OrderListParams {
+  page?: number;
+  per_page?: number;
+  status?: OrderStatus | '';
+  search?: string;
+}
+
+export interface PurchaseOrderResponse {
+  order_id: number;
+  payment_intent_id: string;
+  status: 'succeeded' | 'requires_action' | 'failed';
+  message: string;
+  client_secret: string | null;
+}
+
+// ---------------------------------------------------------------------------
+// Stripe
+// ---------------------------------------------------------------------------
+
+export interface StripePaymentMethodResponse {
+  has_payment_method: boolean;
+  card_last4: string | null;
+  card_brand: string | null;
+}
+
+export interface StripeSetupIntentResponse {
+  client_secret: string;
+  stripe_publishable_key: string;
+}
+
+export interface StripeSavePaymentMethodRequest {
+  payment_method_id: string;
+}
