@@ -2091,7 +2091,9 @@ function WatchlistTab({
               </IndexTable.Cell>
               <IndexTable.Cell>
                 <BlockStack gap="050">
-                  <Text fontWeight="semibold" as="span">{item.name ?? '—'}</Text>
+                  <Link url={`/products/${encodeURIComponent(item.sku)}`} removeUnderline>
+                    <Text fontWeight="semibold" as="span">{item.name ?? '—'}</Text>
+                  </Link>
                   <Text tone="subdued" variant="bodySm" as="span">AOA SKU: {item.sku}</Text>
                 </BlockStack>
               </IndexTable.Cell>
