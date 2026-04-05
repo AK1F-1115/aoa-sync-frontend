@@ -460,9 +460,9 @@ export interface CatalogResponse {
   page: number;
   page_size: number;
   pages: number;
-  /** Top categories for the current status/filter scope — present when status=available */
+  /** All distinct categories in the current status/filter scope — present when status=available */
   categories?: { name: string; count: number }[];
-  /** Top brands for the current status/filter scope — present when status=available */
+  /** All distinct brands in the current status/filter scope — present when status=available */
   brands?: { name: string; count: number }[];
 }
 
