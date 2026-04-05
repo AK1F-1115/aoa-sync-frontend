@@ -72,6 +72,7 @@ export async function getCatalog(
   if (params?.min_qty        != null) query.set('min_qty',          String(params.min_qty));
   if (params?.max_qty        != null) query.set('max_qty',          String(params.max_qty));
   if (params?.marketplace_clear)      query.set('marketplace_clear', 'true');
+  if (params?.compliance_clear)       query.set('compliance_clear',  'true');
 
   const qs = query.toString();
   return apiFetch<CatalogResponse>(`/store/catalog${qs ? `?${qs}` : ''}`);

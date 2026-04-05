@@ -441,7 +441,7 @@ export default function ProductDetailPage() {
     const is404 = error instanceof ApiError && error.status === 404;
     return (
       <Page
-        backAction={{ content: 'Products', onAction: () => router.push('/products') }}
+        backAction={{ content: 'Products', onAction: () => router.back() }}
         title="Product not found"
       >
         <Banner
@@ -463,7 +463,7 @@ export default function ProductDetailPage() {
 
   return (
     <Page
-      backAction={{ content: 'Products', onAction: () => router.push('/products') }}
+      backAction={{ content: 'Products', onAction: () => router.back() }}
       title={product.product_name ?? product.aoa_sku}
       subtitle={`SKU: ${product.aoa_sku}`}
       primaryAction={adminUrl ? {

@@ -460,6 +460,10 @@ export interface CatalogResponse {
   page: number;
   page_size: number;
   pages: number;
+  /** Top categories for the current status/filter scope — present when status=available */
+  categories?: { name: string; count: number }[];
+  /** Top brands for the current status/filter scope — present when status=available */
+  brands?: { name: string; count: number }[];
 }
 
 /** Query params for GET /store/catalog */
@@ -500,6 +504,8 @@ export interface CatalogParams {
   max_qty?: number;
   /** Exclude products that have any marketplace restriction tag */
   marketplace_clear?: boolean;
+  /** Exclude products that have any compliance tag (hazmat, prop65, non-returnable, etc.) */
+  compliance_clear?: boolean;
 }
 
 /** Top-level aggregate from GET /store/catalog/summary */

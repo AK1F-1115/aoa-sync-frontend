@@ -399,11 +399,15 @@ function TagFilterCheckboxes({
   onToggle,
   marketplaceClear,
   onMarketplaceClear,
+  complianceClear,
+  onComplianceClear,
 }: {
   activeTags: string[];
   onToggle: (tag: string) => void;
   marketplaceClear?: boolean;
   onMarketplaceClear?: (v: boolean) => void;
+  complianceClear?: boolean;
+  onComplianceClear?: (v: boolean) => void;
 }) {
   const [showLegend, setShowLegend] = useState(false);
   const legendBtn: React.CSSProperties = {
@@ -418,6 +422,16 @@ function TagFilterCheckboxes({
           <BlockStack key={group.label} gap="200">
             <Text as="span" variant="bodySm" fontWeight="semibold" tone="subdued">{group.label}</Text>
             <BlockStack gap="150">
+              {group.label === 'Compliance' && onComplianceClear && (
+                <>
+                  <Checkbox
+                    label="No compliance issues"
+                    checked={complianceClear ?? false}
+                    onChange={onComplianceClear}
+                  />
+                  <Divider />
+                </>
+              )}
               {group.label === 'Marketplace' && onMarketplaceClear && (
                 <>
                   <Checkbox
@@ -471,19 +485,23 @@ function TagFilterSection({
   onClearAll,
   marketplaceClear,
   onMarketplaceClear,
+  complianceClear,
+  onComplianceClear,
 }: {
   activeTags: string[];
   onToggle: (tag: string) => void;
   onClearAll: () => void;
   marketplaceClear?: boolean;
   onMarketplaceClear?: (v: boolean) => void;
+  complianceClear?: boolean;
+  onComplianceClear?: (v: boolean) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const linkBtn: React.CSSProperties = {
     background: 'none', border: 'none', cursor: 'pointer', padding: 0,
     color: 'var(--p-color-text-emphasis)', fontSize: '0.875rem',
   };
-  const totalActive = activeTags.length + (marketplaceClear ? 1 : 0);
+  const totalActive = activeTags.length + (marketplaceClear ? 1 : 0) + (complianceClear ? 1 : 0);
   return (
     <Box paddingInline="400" paddingBlock="300">
       <BlockStack gap="300">
@@ -505,6 +523,8 @@ function TagFilterSection({
               onToggle={onToggle}
               marketplaceClear={marketplaceClear}
               onMarketplaceClear={onMarketplaceClear}
+              complianceClear={complianceClear}
+              onComplianceClear={onComplianceClear}
             />
           </Box>
         )}
@@ -525,11 +545,11 @@ function ResearchFilterSection({
   minQty, onMinQty,
   maxQty, onMaxQty,
   minMargin, onMinMargin,
-  inStockOnly, onInStockOnly,
   sortBy, onSortBy,
   sortDir, onSortDir,
   activeTags, onToggleTag,
   marketplaceClear, onMarketplaceClear,
+  complianceClear, onComplianceClear,
   activeCount,
   onClear,
 }: {
@@ -540,11 +560,11 @@ function ResearchFilterSection({
   minQty: string;       onMinQty: (v: string) => void;
   maxQty: string;       onMaxQty: (v: string) => void;
   minMargin: string;    onMinMargin: (v: string) => void;
-  inStockOnly: boolean; onInStockOnly: (v: boolean) => void;
   sortBy: string;       onSortBy: (v: string) => void;
   sortDir: 'asc' | 'desc'; onSortDir: (v: 'asc' | 'desc') => void;
   activeTags: string[];    onToggleTag: (tag: string) => void;
   marketplaceClear: boolean; onMarketplaceClear: (v: boolean) => void;
+  complianceClear: boolean; onComplianceClear: (v: boolean) => void;
   activeCount: number;
   onClear: () => void;
 }) {
@@ -686,12 +706,6 @@ function ResearchFilterSection({
                   <Text as="span" variant="bodySm" fontWeight="semibold">Min. margin</Text>
                   <Select label="Min. margin" labelHidden options={marginOptions} value={minMargin} onChange={onMinMargin} />
                 </BlockStack>
-
-                {/* In stock only — spacer keeps it vertically aligned with other columns */}
-                <BlockStack gap="150">
-                  <div style={{ height: '18px' }} />
-                  <Checkbox label="In stock only" checked={inStockOnly} onChange={onInStockOnly} />
-                </BlockStack>
               </div>
               <Divider />
               {/* Tag filters */}
@@ -700,6 +714,8 @@ function ResearchFilterSection({
                 onToggle={onToggleTag}
                 marketplaceClear={marketplaceClear}
                 onMarketplaceClear={onMarketplaceClear}
+                complianceClear={complianceClear}
+                onComplianceClear={onComplianceClear}
               />
             </BlockStack>
           </Box>
@@ -1540,7 +1556,7 @@ function AvailableCatalogTab({
   const [minQty, setMinQty] = useState(() => readUrl().get('min_qty') ?? '');
   const [maxQty, setMaxQty] = useState(() => readUrl().get('max_qty') ?? '');
   const [minMargin, setMinMargin] = useState(() => readUrl().get('min_margin') ?? '');
-  const [inStockOnly, setInStockOnly] = useState(() => readUrl().get('in_stock') === 'true');
+  const [noCompliance, setNoCompliance] = useState(() => readUrl().get('no_compliance') === 'true');
   const [sortBy, setSortBy] = useState(() => readUrl().get('sort_by') ?? '');
   const [sortDir, setSortDir] = useState<'asc' | 'desc'>(() => (readUrl().get('sort_dir') ?? 'desc') as 'asc' | 'desc');
   const [tagFilters, setTagFilters] = useState<string[]>(() => {
@@ -1589,7 +1605,7 @@ function AvailableCatalogTab({
     if (minQty)              sp.set('min_qty',    minQty);          else sp.delete('min_qty');
     if (maxQty)              sp.set('max_qty',    maxQty);          else sp.delete('max_qty');
     if (minMargin)           sp.set('min_margin', minMargin);       else sp.delete('min_margin');
-    if (inStockOnly)         sp.set('in_stock',   'true');          else sp.delete('in_stock');
+    if (noCompliance)        sp.set('no_compliance', 'true');        else sp.delete('no_compliance');
     if (sortBy)              sp.set('sort_by',    sortBy);          else sp.delete('sort_by');
     if (sortBy)              sp.set('sort_dir',   sortDir);         else sp.delete('sort_dir');
     if (tagFilters.length)   sp.set('tags',       tagFilters.join(','));  else sp.delete('tags');
@@ -1599,14 +1615,14 @@ function AvailableCatalogTab({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [page, searchValue, supplierFilter, categoryFilter, brandFilter,
       minCost, maxCost, minListPrice, maxListPrice, minQty, maxQty,
-      minMargin, inStockOnly, sortBy, sortDir, tagFilters, marketplaceClear]);
+      minMargin, noCompliance, sortBy, sortDir, tagFilters, marketplaceClear]);
 
   const handleSupplier  = useCallback((v: string)       => { setSupplierFilter(v); setPage(1); }, []);
   const handleCategory  = useCallback((v: string)       => { setCategoryFilter(v); setPage(1); }, []);
   const handleBrand     = useCallback((v: string)       => { setBrandFilter(v);    setPage(1); }, []);
-  const handleMinMargin = useCallback((v: string)       => { setMinMargin(v);      setPage(1); }, []);
-  const handleInStock   = useCallback((v: boolean)      => { setInStockOnly(v);   setPage(1); }, []);
-  const handleSortBy    = useCallback((v: string)       => { setSortBy(v);         setPage(1); }, []);
+  const handleMinMargin    = useCallback((v: string)       => { setMinMargin(v);      setPage(1); }, []);
+  const handleNoCompliance = useCallback((v: boolean)      => { setNoCompliance(v);   setPage(1); }, []);
+  const handleSortBy       = useCallback((v: string)       => { setSortBy(v);         setPage(1); }, []);
   const handleSortDir   = useCallback((v: 'asc'|'desc') => setSortDir(v), []);
   const handleToggleTag = useCallback((tag: string) => {
     setTagFilters((prev) => prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]);
@@ -1623,7 +1639,7 @@ function AvailableCatalogTab({
     setMinCost(''); setMaxCost(''); setDMinCost(''); setDMaxCost('');
     setMinListPrice(''); setMaxListPrice(''); setDMinList(''); setDMaxList('');
     setMinQty(''); setMaxQty(''); setDMinQty(''); setDMaxQty('');
-    setMinMargin(''); setInStockOnly(false); setTagFilters([]); setMarketplaceClear(false);
+    setMinMargin(''); setNoCompliance(false); setTagFilters([]); setMarketplaceClear(false);
     setPage(1);
   };
 
@@ -1632,7 +1648,7 @@ function AvailableCatalogTab({
       'catalog', 'available', page,
       debouncedSearch, supplierFilter, categoryFilter, brandFilter,
       dMinCost, dMaxCost, dMinList, dMaxList, dMinQty, dMaxQty,
-      minMargin, inStockOnly, sortBy, sortDir,
+      minMargin, noCompliance, sortBy, sortDir,
       [...tagFilters].sort().join(','), marketplaceClear,
     ],
     queryFn: () => getCatalog({
@@ -1648,11 +1664,11 @@ function AvailableCatalogTab({
       min_qty:           dMinQty         ? parseInt(dMinQty, 10)   : undefined,
       max_qty:           dMaxQty         ? parseInt(dMaxQty, 10)   : undefined,
       min_margin:        minMargin       ? parseInt(minMargin, 10) : undefined,
-      in_stock_only:     inStockOnly     || undefined,
       sort_by:           (sortBy as CatalogParams['sort_by']) || undefined,
       sort_dir:          sortBy          ? sortDir : undefined,
       tags:              tagFilters.length > 0 ? tagFilters : undefined,
       marketplace_clear: marketplaceClear || undefined,
+      compliance_clear:  noCompliance    || undefined,
     }),
     placeholderData: keepPreviousData,
     staleTime: 60_000,
@@ -1684,7 +1700,7 @@ function AvailableCatalogTab({
     setExpandedSkus(new Set());
   }, [page, debouncedSearch, supplierFilter, categoryFilter, brandFilter,
       dMinCost, dMaxCost, dMinList, dMaxList, dMinQty, dMaxQty,
-      minMargin, inStockOnly, sortBy, sortDir, tagFilters, marketplaceClear]);
+      minMargin, noCompliance, sortBy, sortDir, tagFilters, marketplaceClear]);
 
   const pushMutation = useMutation({
     mutationFn: (skus: string[]) => pushCatalog({ skus }),
@@ -1713,11 +1729,11 @@ function AvailableCatalogTab({
 
   const hasBasicFilters    = Boolean(debouncedSearch || supplierFilter || categoryFilter || brandFilter);
   const researchActiveCount = [dMinCost, dMaxCost, dMinList, dMaxList, dMinQty, dMaxQty, minMargin]
-    .filter(Boolean).length + (inStockOnly ? 1 : 0) + (marketplaceClear ? 1 : 0) + tagFilters.length;
+    .filter(Boolean).length + (noCompliance ? 1 : 0) + (marketplaceClear ? 1 : 0) + tagFilters.length;
   const hasFilters = hasBasicFilters || researchActiveCount > 0 || Boolean(sortBy);
 
-  const categoryOptions = toSelectOptions(summary?.categories ?? [], 'All categories');
-  const brandOptions    = toSelectOptions(summary?.brands     ?? [], 'All brands');
+  const categoryOptions = toSelectOptions(data?.categories ?? [], 'All categories');
+  const brandOptions    = toSelectOptions(data?.brands     ?? [], 'All brands');
 
   const selectedSkus = [...new Set(
     selectedResources
@@ -1867,12 +1883,13 @@ function AvailableCatalogTab({
           minQty={minQty}             onMinQty={setMinQty}
           maxQty={maxQty}             onMaxQty={setMaxQty}
           minMargin={minMargin}       onMinMargin={handleMinMargin}
-          inStockOnly={inStockOnly}   onInStockOnly={handleInStock}
           sortBy={sortBy}             onSortBy={handleSortBy}
           sortDir={sortDir}           onSortDir={handleSortDir}
           activeTags={tagFilters}     onToggleTag={handleToggleTag}
           marketplaceClear={marketplaceClear}
           onMarketplaceClear={(v) => { setMarketplaceClear(v); setPage(1); }}
+          complianceClear={noCompliance}
+          onComplianceClear={handleNoCompliance}
           activeCount={researchActiveCount}
           onClear={clearResearchFilters}
         />
