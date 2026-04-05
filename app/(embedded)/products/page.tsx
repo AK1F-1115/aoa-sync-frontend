@@ -1976,7 +1976,7 @@ function AvailableCatalogTab({
                   const el = (
                     <ProductRow key={key} product={group[0]} rowId={key} index={pos}
                       selected={selectedResources.includes(key)} actionButton={actionEl}
-                      detailUrl={`/products/${encodeURIComponent(sku)}`} />
+                      detailUrl={`/products/${encodeURIComponent(sku)}${group[0].image_url ? `?img=${encodeURIComponent(group[0].image_url)}` : ''}`} />
                   );
                   pos += 1;
                   return el;
@@ -1986,7 +1986,7 @@ function AvailableCatalogTab({
                   <ProductGroupRows key={key} group={group} startIndex={pos}
                     selectedResources={selectedResources} isExpanded={expanded}
                     onToggle={() => toggleExpand(sku)} actionButton={actionEl}
-                    detailUrl={`/products/${encodeURIComponent(sku)}`} />
+                    detailUrl={`/products/${encodeURIComponent(sku)}${group[0].image_url ? `?img=${encodeURIComponent(group[0].image_url)}` : ''}`} />
                 );
                 pos += expanded ? 1 + group.length : 1;
                 return el;
@@ -2091,7 +2091,7 @@ function WatchlistTab({
               </IndexTable.Cell>
               <IndexTable.Cell>
                 <BlockStack gap="050">
-                  <Link url={`/products/${encodeURIComponent(item.sku)}`} removeUnderline>
+                  <Link url={`/products/${encodeURIComponent(item.sku)}${item.image_url ? `?img=${encodeURIComponent(item.image_url)}` : ''}`} removeUnderline>
                     <Text fontWeight="semibold" as="span">{item.name ?? '—'}</Text>
                   </Link>
                   <Text tone="subdued" variant="bodySm" as="span">AOA SKU: {item.sku}</Text>

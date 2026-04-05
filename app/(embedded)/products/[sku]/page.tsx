@@ -5,14 +5,14 @@
  *
  * Full product detail page — loaded from GET /store/catalog/{sku}.
  *
- * Currently accessible only for products already in the store's active
- * Shopify catalog (the backend endpoint 404s for unsynced products).
- * Once the backend extends the endpoint, this same page will be linked
- * from the "Available to Add" tab as well.
+ * Linked from all three tabs: My Shopify Catalog, Available to Add, and
+ * Watchlist. An ?img= search param can be passed as an image-URL hint for
+ * products where the backend hasn\'t returned images yet (e.g. unsynced
+ * available products); ImageGallery uses it as a last-resort fallback.
  */
 
 import { useState } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import {
   Page,
   Card,
@@ -423,7 +423,12 @@ function ShopifyStatusCard({ product, shopDomain }: { product: ProductDetailResp
 export default function ProductDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const sku = Array.isArray(params.sku) ? params.sku[0] : params.sku ?? '';
+
+  // Passed by the Available / Watchlist tabs so we can show the thumbnail
+  // even if the backend hasn't populated images for unsynced products yet.
+  const hintImageUrl = searchParams.get('img') || undefined;
 
   const { shop } = useMerchantContext();
   const shopDomain = shop?.domain;
@@ -445,13 +450,13 @@ export default function ProductDetailPage() {
         title="Product not found"
       >
         <Banner
-          title={is404 ? 'Product not in your catalog' : 'Could not load product'}
+          title={is404 ? 'Product not found' : 'Could not load product'}
           tone="critical"
           action={is404 ? undefined : { content: 'Retry', onAction: () => void refetch() }}
         >
           <Text as="p">
             {is404
-              ? 'This product could not be found in the AOA catalog. It may have been discontinued or the SKU is incorrect.'
+              ? 'This product could not be found. It may have been discontinued or the SKU is incorrect.'
               : (error as Error)?.message || 'An unexpected error occurred.'}
           </Text>
         </Banner>
@@ -476,7 +481,7 @@ export default function ProductDetailPage() {
         {/* Hero: image + core info side by side */}
         <Card>
           <div style={{ display: 'grid', gridTemplateColumns: 'minmax(200px, 280px) 1fr', gap: '1.5rem', alignItems: 'start' }}>
-            <ImageGallery images={product.images} imageUrl={product.image_url} />
+            <ImageGallery images={product.images} imageUrl={product.image_url ?? hintImageUrl} />
             <ProductInfoPanel product={product} />
           </div>
         </Card>
