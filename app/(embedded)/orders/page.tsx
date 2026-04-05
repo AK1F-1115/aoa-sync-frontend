@@ -157,20 +157,22 @@ export default function OrdersPage() {
           <Box padding="400">
             <InlineStack gap="300" blockAlign="end" wrap>
               <Box minWidth="200px">
-                <TextField
-                  label="Search"
-                  labelHidden
-                  placeholder="Order # or customer email"
-                  value={searchInput}
-                  onChange={setSearchInput}
-                  clearButton
-                  onClearButtonClick={() => { setSearchInput(''); setSearch(''); setPage(1); }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}
-                  autoComplete="off"
-                  connectedRight={
-                    <Button onClick={handleSearch}>Search</Button>
-                  }
-                />
+                {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+                <div onKeyDown={(e) => { if (e.key === 'Enter') handleSearch(); }}>
+                  <TextField
+                    label="Search"
+                    labelHidden
+                    placeholder="Order # or customer email"
+                    value={searchInput}
+                    onChange={setSearchInput}
+                    clearButton
+                    onClearButtonClick={() => { setSearchInput(''); setSearch(''); setPage(1); }}
+                    autoComplete="off"
+                    connectedRight={
+                      <Button onClick={handleSearch}>Search</Button>
+                    }
+                  />
+                </div>
               </Box>
               <Box minWidth="180px">
                 <Select
