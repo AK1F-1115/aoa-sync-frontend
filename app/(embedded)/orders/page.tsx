@@ -71,13 +71,13 @@ const STATUS_OPTIONS: { label: string; value: OrderStatus | '' }[] = [
 
 function statusBadge(status: OrderStatus) {
   switch (status) {
-    case 'pending_purchase':  return <Badge tone="attention">Pending purchase</Badge>;
+    case 'pending_purchase':  return <Badge tone="attention">Pending Payment</Badge>;
     case 'purchased':         return <Badge tone="info">Purchased</Badge>;
-    case 'fulfillment_sent':  return <Badge tone="info">Fulfillment sent</Badge>;
-    case 'shipped':           return <Badge tone="info">Shipped</Badge>;
+    case 'fulfillment_sent':  return <Badge tone="info">Processing</Badge>;
+    case 'shipped':           return <Badge tone="success">Shipped</Badge>;
     case 'delivered':         return <Badge tone="success">Delivered</Badge>;
-    case 'cancelled':         return <Badge tone="enabled">Cancelled</Badge>;
-    case 'no_aoa_items':      return <Badge tone="enabled">No AOA items</Badge>;
+    case 'cancelled':         return <Badge tone="critical">Cancelled</Badge>;
+    case 'no_aoa_items':      return <Badge tone="enabled">No AOA Items</Badge>;
     default:                  return <Badge>{status}</Badge>;
   }
 }
@@ -258,6 +258,7 @@ export default function OrdersPage() {
     { title: 'Date'          },
     { title: 'Customer paid' },
     { title: 'AOA cost'      },
+    { title: 'Shipping'      },
     { title: 'Margin'        },
     { title: 'Tracking'      },
     { title: 'Status'        },
@@ -372,16 +373,23 @@ export default function OrdersPage() {
                       <Text fontWeight="semibold" as="span">{order.shopify_order_number}</Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span" tone="subdued">{order.customer_email}</Text>
+                      <Text as="span" tone="subdued">
+                        {order.customer_name ?? order.customer_email ?? '—'}
+                      </Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
-                      <Text as="span">{formatDate(order.ordered_at)}</Text>
+                      <Text as="span">{formatDate(order.ordered_at ?? order.created_at)}</Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
                       <Text as="span">{formatPrice(order.subtotal_price)}</Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
                       <Text as="span" fontWeight="semibold">{formatPrice(order.aoa_total_cost)}</Text>
+                    </IndexTable.Cell>
+                    <IndexTable.Cell>
+                      <Text as="span" tone={order.shipping_cost ? undefined : 'subdued'}>
+                        {formatPrice(order.shipping_cost)}
+                      </Text>
                     </IndexTable.Cell>
                     <IndexTable.Cell>
                       {margin ? (

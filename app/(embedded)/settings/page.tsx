@@ -35,7 +35,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { getPlans, subscribeToPlan, cancelSubscription } from '@/lib/api/billing';
 import { getSettings, updateSettings } from '@/lib/api/settings';
 import { getCollections, bootstrapCollections, reconcileCollections } from '@/lib/api/collections';
-import { getShipping, bootstrapShipping } from '@/lib/api/shipping';
+import { getShipping, bootstrapShipping, reconcileShipping } from '@/lib/api/shipping';
 import {
   getPaymentMethod,
   deletePaymentMethod,
@@ -1123,6 +1123,37 @@ function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
     },
   });
 
+  const [reconcileResult,     setReconcileResult]     = useState<string | null>(null);
+  const [reconcileResultTone, setReconcileResultTone] = useState<'success' | 'info' | 'critical'>('success');
+
+  const reconcileMutation = useMutation({
+    mutationFn: reconcileShipping,
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: ['shipping'] });
+      if (data.healthy) {
+        setReconcileResult('Shipping profiles are healthy. No action needed.');
+        setReconcileResultTone('success');
+      } else if (data.recovered) {
+        setReconcileResult(
+          `Shipping profiles were restored. ${data.warehouse_products} warehouse and ${data.dropship_products} dropship products reassigned. Go to Shopify Admin → Settings → Shipping and delivery to verify your rates.`
+        );
+        setReconcileResultTone('success');
+      } else if (data.skipped) {
+        setReconcileResult(data.message);
+        setReconcileResultTone('info');
+      }
+      setScopeError(null);
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 503) {
+        setScopeError(err.message);
+      } else {
+        setReconcileResult('Repair failed. Please try again or contact support.');
+        setReconcileResultTone('critical');
+      }
+    },
+  });
+
   const adminShippingUrl = shopDomain
     ? `https://${shopDomain}/admin/settings/shipping`
     : null;
@@ -1165,6 +1196,16 @@ function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
               &ldquo;Set up shipping profiles&rdquo;.
             </Text>
           </BlockStack>
+        </Banner>
+      )}
+
+      {/* Reconcile result banner */}
+      {reconcileResult && (
+        <Banner
+          tone={reconcileResultTone}
+          onDismiss={() => setReconcileResult(null)}
+        >
+          <Text as="p">{reconcileResult}</Text>
         </Banner>
       )}
 
@@ -1228,16 +1269,23 @@ function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
                 variant="primary"
                 onClick={() => bootstrapMutation.mutate()}
                 loading={bootstrapMutation.isPending}
-                disabled={bootstrapMutation.isPending}
+                disabled={bootstrapMutation.isPending || reconcileMutation.isPending}
               >
                 Set up shipping profiles
+              </Button>
+              <Button
+                onClick={() => { setReconcileResult(null); reconcileMutation.mutate(); }}
+                loading={reconcileMutation.isPending}
+                disabled={bootstrapMutation.isPending || reconcileMutation.isPending}
+              >
+                {reconcileMutation.isPending ? 'Checking shipping profiles…' : 'Repair Shipping Profiles'}
               </Button>
               <Button
                 variant="plain"
                 tone="critical"
                 onClick={() => toggleAutoMutation.mutate(false)}
                 loading={toggleAutoMutation.isPending}
-                disabled={bootstrapMutation.isPending}
+                disabled={bootstrapMutation.isPending || reconcileMutation.isPending}
               >
                 Disable
               </Button>
@@ -1246,6 +1294,11 @@ function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
               <Text as="p" tone="subdued">
                 Setting up shipping profiles — this may take up to 2 minutes
                 for large stores. Please wait&hellip;
+              </Text>
+            )}
+            {reconcileMutation.isPending && (
+              <Text as="p" tone="subdued">
+                Checking shipping profiles — this may take up to 2 minutes. Please wait&hellip;
               </Text>
             )}
             {bootstrapMutation.isError && !scopeError && (
@@ -1303,9 +1356,17 @@ function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
                   variant="plain"
                   onClick={() => bootstrapMutation.mutate()}
                   loading={bootstrapMutation.isPending}
-                  disabled={bootstrapMutation.isPending}
+                  disabled={bootstrapMutation.isPending || reconcileMutation.isPending}
                 >
                   Re-sync profiles
+                </Button>
+                <Button
+                  variant="plain"
+                  onClick={() => { setReconcileResult(null); reconcileMutation.mutate(); }}
+                  loading={reconcileMutation.isPending}
+                  disabled={bootstrapMutation.isPending || reconcileMutation.isPending}
+                >
+                  {reconcileMutation.isPending ? 'Checking shipping profiles…' : 'Repair Shipping Profiles'}
                 </Button>
               </InlineStack>
               <Button
@@ -1313,7 +1374,7 @@ function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
                 tone="critical"
                 onClick={() => toggleAutoMutation.mutate(false)}
                 loading={toggleAutoMutation.isPending}
-                disabled={bootstrapMutation.isPending}
+                disabled={bootstrapMutation.isPending || reconcileMutation.isPending}
               >
                 Disable
               </Button>
@@ -1321,6 +1382,11 @@ function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
             {bootstrapMutation.isPending && (
               <Text as="p" tone="subdued">
                 Re-syncing profiles — this may take up to 2 minutes&hellip;
+              </Text>
+            )}
+            {reconcileMutation.isPending && (
+              <Text as="p" tone="subdued">
+                Checking shipping profiles — this may take up to 2 minutes. Please wait&hellip;
               </Text>
             )}
             {bootstrapMutation.isError && !scopeError && (

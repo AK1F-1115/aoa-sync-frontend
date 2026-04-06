@@ -58,22 +58,14 @@ function formatDateTime(iso: string | null | undefined): string {
 
 function statusBadge(status: OrderStatus) {
   switch (status) {
-    case 'pending_purchase':
-      return <Badge tone="attention">Pending purchase</Badge>;
-    case 'purchased':
-      return <Badge tone="info">Purchased</Badge>;
-    case 'fulfillment_sent':
-      return <Badge tone="info">Fulfillment sent</Badge>;
-    case 'shipped':
-      return <Badge tone="info">Shipped</Badge>;
-    case 'delivered':
-      return <Badge tone="success">Delivered</Badge>;
-    case 'cancelled':
-      return <Badge tone="enabled">Cancelled</Badge>;
-    case 'no_aoa_items':
-      return <Badge tone="enabled">No AOA items</Badge>;
-    default:
-      return <Badge>{status}</Badge>;
+    case 'pending_purchase':  return <Badge tone="attention">Pending Payment</Badge>;
+    case 'purchased':         return <Badge tone="info">Purchased</Badge>;
+    case 'fulfillment_sent':  return <Badge tone="info">Processing</Badge>;
+    case 'shipped':           return <Badge tone="success">Shipped</Badge>;
+    case 'delivered':         return <Badge tone="success">Delivered</Badge>;
+    case 'cancelled':         return <Badge tone="critical">Cancelled</Badge>;
+    case 'no_aoa_items':      return <Badge tone="enabled">No AOA Items</Badge>;
+    default:                  return <Badge>{status}</Badge>;
   }
 }
 
@@ -168,7 +160,7 @@ function PurchaseSection({ order }: { order: OrderDetail }) {
   if (order.status !== 'pending_purchase') return null;
 
   const isLoading = purchaseMutation.isPending || is3dsLoading || cardLoading;
-  const cost = parseFloat(order.aoa_total_cost);
+  const cost = parseFloat(order.aoa_total_cost ?? '');
 
   const handlePurchaseClick = () => {
     setPurchaseError(null);
@@ -356,8 +348,10 @@ export default function OrderDetailPage() {
   return (
     <Page
       backAction={{ content: 'Orders', onAction: () => router.back() }}
-      title={order.shopify_order_number}
-      subtitle={`Customer: ${order.customer_email}`}
+      title={order.shopify_order_number ?? ''}
+      subtitle={order.customer_name
+        ? `${order.customer_name}${order.customer_email ? ` (${order.customer_email})` : ''}`
+        : (order.customer_email ?? undefined)}
       titleMetadata={statusBadge(order.status)}
     >
       <BlockStack gap="400">
@@ -372,7 +366,10 @@ export default function OrderDetailPage() {
               </BlockStack>
               <BlockStack gap="050">
                 <Text as="span" variant="bodySm" tone="subdued">Customer</Text>
-                <Text as="span">{order.customer_email}</Text>
+                <Text as="span">{order.customer_name ?? order.customer_email ?? '—'}</Text>
+                {order.customer_name && order.customer_email && (
+                  <Text as="span" variant="bodySm" tone="subdued">{order.customer_email}</Text>
+                )}
               </BlockStack>
               <BlockStack gap="050">
                 <Text as="span" variant="bodySm" tone="subdued">Ordered</Text>
@@ -449,6 +446,24 @@ export default function OrderDetailPage() {
                   </InlineStack>
                 )}
               </BlockStack>
+              {/* Shipping address */}
+              {order.shipping_address_json && (
+                <BlockStack gap="050">
+                  <Text as="span" variant="bodySm" tone="subdued">Ship to</Text>
+                  <Text as="span">{order.shipping_address_json.name}</Text>
+                  <Text as="span">{order.shipping_address_json.address1}</Text>
+                  {order.shipping_address_json.address2 && (
+                    <Text as="span">{order.shipping_address_json.address2}</Text>
+                  )}
+                  <Text as="span">
+                    {order.shipping_address_json.city}, {order.shipping_address_json.province_code} {order.shipping_address_json.zip}
+                  </Text>
+                  <Text as="span">{order.shipping_address_json.country}</Text>
+                  {order.shipping_address_json.phone && (
+                    <Text as="span">{order.shipping_address_json.phone}</Text>
+                  )}
+                </BlockStack>
+              )}
             </div>
 
             {/* Pricing summary */}
@@ -460,6 +475,15 @@ export default function OrderDetailPage() {
             <InlineStack align="space-between">
               <Text as="span" fontWeight="semibold">Your AOA cost</Text>
               <Text as="span" fontWeight="semibold">{formatPrice(order.aoa_total_cost)}</Text>
+            </InlineStack>
+            <InlineStack align="space-between">
+              <Text as="span" tone="subdued">Shipping cost</Text>
+              {order.shipping_cost
+                ? <Text as="span">{formatPrice(order.shipping_cost)}</Text>
+                : <Text as="span" tone="subdued">
+                    — <Text as="span" variant="bodySm" tone="subdued">(available after AOA processes fulfillment)</Text>
+                  </Text>
+              }
             </InlineStack>
             {(() => {
               const sub = parseFloat(order.subtotal_price ?? '');

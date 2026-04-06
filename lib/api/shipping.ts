@@ -12,7 +12,7 @@
  */
 
 import { apiFetch } from '@/lib/api/client';
-import type { ShippingState, ShippingBootstrapResponse } from '@/types/api';
+import type { ShippingState, ShippingBootstrapResponse, ShippingReconcileResponse } from '@/types/api';
 
 /** Fetch the current shipping profile state for this store. */
 export async function getShipping(): Promise<ShippingState> {
@@ -38,6 +38,30 @@ export async function bootstrapShipping(): Promise<ShippingBootstrapResponse> {
       : undefined;
 
   return apiFetch<ShippingBootstrapResponse>('/store/shipping/bootstrap', {
+    method: 'POST',
+    ...(signal ? { signal } : {}),
+  });
+}
+
+/**
+ * Check and repair shipping profiles.
+ *
+ * Handles all cases automatically:
+ *   - healthy: no action taken, returns { healthy: true }
+ *   - profiles deleted/missing: restores them, returns { recovered: true }
+ *   - never bootstrapped: runs bootstrap, returns { recovered: false }
+ *   - shipping disabled: returns { skipped: true }
+ *
+ * Long-running — up to 2 minutes. Uses a 150 s AbortSignal.
+ * Throws ApiError 503 if write_shipping scope is missing.
+ */
+export async function reconcileShipping(): Promise<ShippingReconcileResponse> {
+  const signal =
+    typeof AbortSignal !== 'undefined' && 'timeout' in AbortSignal
+      ? AbortSignal.timeout(150_000)
+      : undefined;
+
+  return apiFetch<ShippingReconcileResponse>('/store/shipping/reconcile', {
     method: 'POST',
     ...(signal ? { signal } : {}),
   });

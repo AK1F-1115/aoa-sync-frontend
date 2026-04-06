@@ -299,6 +299,20 @@ export interface ShippingBootstrapResponse {
   skipped?: boolean;
 }
 
+/** Success response from POST /store/shipping/reconcile */
+export interface ShippingReconcileResponse {
+  ok: boolean;
+  /** Profiles are healthy — no action taken */
+  healthy?: boolean;
+  /** Profiles were deleted and have been restored */
+  recovered?: boolean;
+  /** Bootstrap was skipped because auto_shipping_profiles=false */
+  skipped?: boolean;
+  warehouse_products?: number;
+  dropship_products?: number;
+  message: string;
+}
+
 // ---------------------------------------------------------------------------
 // Catalog
 // ---------------------------------------------------------------------------
@@ -741,16 +755,34 @@ export type OrderStatus =
   | 'cancelled'
   | 'no_aoa_items';
 
+export interface ShippingAddress {
+  first_name: string;
+  last_name: string;
+  name: string;
+  address1: string;
+  address2: string | null;
+  city: string;
+  province: string;
+  province_code: string;
+  zip: string;
+  country: string;
+  country_code: string;
+  phone: string | null;
+}
+
 export interface OrderListItem {
   id: number;
   shopify_order_id: string;
-  shopify_order_number: string;
-  customer_email: string;
-  subtotal_price: string;
-  aoa_total_cost: string;
+  shopify_order_number: string | null;
+  customer_email: string | null;
+  customer_name: string | null;
+  subtotal_price: string | null;
+  aoa_total_cost: string | null;
+  /** null until Essendant invoices (EDI Phase 4) */
+  shipping_cost: string | null;
   status: OrderStatus;
   tracking_number: string | null;
-  ordered_at: string;
+  ordered_at: string | null;
   purchased_at: string | null;
   created_at: string;
 }
@@ -769,6 +801,7 @@ export interface OrderItem {
 
 export interface OrderDetail extends OrderListItem {
   store_id: number;
+  shipping_address_json: ShippingAddress | null;
   stripe_payment_intent_id: string | null;
   stripe_payment_status: string | null;
   fulfilled_at: string | null;
