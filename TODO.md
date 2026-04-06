@@ -152,4 +152,129 @@
 
 ---
 
-## Upcoming (Next Sprint)
+## Sprint: Dashboard — Product Search + Setup Guide
+
+> **Goal:** Enhance the dashboard with a keyword product search engine (searches the full AOA available catalog) and a per-merchant onboarding setup guide checklist.
+> No localStorage anywhere. All state is backend-persisted.
+
+---
+
+### Feature 1: Product Search
+
+#### Overview
+A prominent search box on the dashboard that lets merchants keyword-search the full AOA available product pool and browse results as cards — with watchlist toggle built in. This reuses the existing `/store/catalog?status=available&search=` endpoint which already searches the full AOA pool (not just pushed products).
+
+---
+
+#### 🔲 Frontend — `app/(embedded)/dashboard/page.tsx`
+
+- [ ] **Search box** — large centered `TextField` with a "Search" `Button` (`connectedRight`). Wrapped in a native `<div onKeyDown>` for Enter key (Polaris TextField has no `onKeyDown` prop — learned from orders page fix). Placeholder: *"Search AOA's catalog — try 'wireless headphones', 'gym bag', 'kids toys'…"*
+- [ ] **Results grid** — responsive CSS grid (3 columns desktop, 2 tablet, 1 mobile) of product cards. Each card:
+  - Thumbnail image (fallback to a generic product icon)
+  - Product name (truncated at 2 lines)
+  - Brand name (subdued)
+  - Price (AOA cost — so merchant can assess margin)
+  - "View details" link → `/products/[sku]`
+  - Watchlist toggle button — "Save" / "Saved ✓" — calls `useWatchlist().toggleWatchlist()` (already backend-persisted)
+- [ ] **Search states:**
+  - **Pre-search (idle)** — no grid, just a short blurb: *"Search the full AOA catalog to discover products to add to your store."*
+  - **Loading** — skeleton card grid (6 skeleton cards, same grid layout)
+  - **No results** — Polaris `EmptyState` with tip: *"Try a broader search term or browse by category in the Products tab."*
+  - **Error** — Polaris `Banner` tone="critical" with retry button
+- [ ] **Query config:**
+  - `queryKey: ['catalogSearch', searchTerm]`
+  - `queryFn`: `getCatalog({ status: 'available', search: term, page: 1, page_size: 12 })`
+  - `enabled: searchTerm.trim().length > 0`
+  - `staleTime: 2 * 60_000`
+- [ ] **No pagination on dashboard** — show top 12 results only. If > 12 exist, show a "See all X results in Products →" link that navigates to `/products?tab=available&search=<term>`.
+
+#### 🔲 Frontend — `lib/api/products.ts`
+
+- [ ] No new function needed — `getCatalog({ status: 'available', search: term })` already works. Just call it from the dashboard.
+
+#### 🔲 Frontend — `types/api.ts`
+
+- [ ] No new types needed — `CatalogProduct` and `CatalogResponse` already cover the search results shape.
+
+#### Backend — No new endpoints needed
+> `GET /store/catalog?status=available&search=<term>&page=1&page_size=12` already exists and searches the full AOA pool. Confirm with backend that `status=available` truly searches all AOA products (not just store-scoped ones) — this is the only thing to verify.
+
+---
+
+### Feature 2: Setup Guide
+
+#### Overview
+A collapsible onboarding checklist card on the dashboard. 4 steps, each auto-detected from real data. Completion state (dismissed flag) stored per-merchant on the backend. The card disappears permanently once dismissed.
+
+---
+
+#### The 4 Steps
+
+| # | Step title | Completion source | CTA if incomplete |
+|---|-----------|-------------------|-------------------|
+| 1 | **Choose a plan** | `subscription.status === 'active' \|\| === 'trial'` | Button → `/settings` |
+| 2 | **Save products to your watchlist** | `wishlistCount > 0` from `GET /store/wishlist` (already loaded by `useWatchlist`) | Button → `/products?tab=available` |
+| 3 | **Push products to your store** | `syncHealth.productsPushed > 0` (already in `useMerchantContext`) | Button → `/products` |
+| 4 | **Set up your payment method** | `has_payment_method === true` from `GET /store/stripe/payment-method` (already used in settings) | Button → `/settings?tab=payment` |
+
+> Steps 1 and 3 come from `useMerchantContext()` — zero new API calls.
+> Step 2 comes from `useWatchlist()` — already fetched on the products page, shares the same React Query cache (`['wishlist']`).
+> Step 4 reuses the `['stripePaymentMethod']` query — add it to the dashboard with `staleTime: 60_000`.
+
+---
+
+#### 🔲 Frontend — `app/(embedded)/dashboard/page.tsx`
+
+- [ ] **SetupGuide component** — rendered above the search box and the Store/Sync cards
+- [ ] **Progress bar** — Polaris `ProgressBar` showing completed steps / 4 (e.g. `value={75}` when 3/4 done)
+- [ ] **Completion counter** — `Badge` in the card header: "3 of 4 complete"
+- [ ] **Step rows** — each step is an `InlineStack` with:
+  - Green filled circle icon (✓) if complete, grey hollow circle if not
+  - Step title (bold) + one-line description
+  - Action `Button` variant="plain" — only rendered when the step is **not** complete
+- [ ] **Dismiss button** — small "✕ Dismiss" `Button` variant="plain" in the card top-right corner. On click: calls `POST /store/onboarding/dismiss` → on success hides the card permanently for this merchant.
+- [ ] **Auto-hide** — if all 4 steps are complete AND `dismissed === true`, render nothing. If all 4 are complete but not dismissed, show a "You're all set! 🎉" success state with the dismiss button.
+- [ ] **Query for dismissed state** — `useQuery({ queryKey: ['onboardingStatus'], queryFn: getOnboardingStatus })`. Returns `{ dismissed: boolean, completed_steps: string[] }`. If `dismissed === true`, render nothing immediately (no flash).
+
+#### 🔲 Frontend — `lib/api/onboarding.ts` *(new file)*
+
+- [ ] `getOnboardingStatus()` → `GET /store/onboarding/status` → `{ dismissed: boolean }`
+- [ ] `dismissOnboarding()` → `POST /store/onboarding/dismiss` → `{ ok: true }`
+
+#### 🔲 Frontend — `types/api.ts`
+
+- [ ] Add `OnboardingStatus { dismissed: boolean }` interface
+
+---
+
+#### 🔴 Backend — New endpoints required
+
+**`GET /store/onboarding/status`**
+- Auth: Shopify JWT (same as all other `/store/` endpoints)
+- Response: `{ "dismissed": false }`
+- Implementation: Read `shopify_stores.onboarding_dismissed` boolean column (default `false`)
+
+**`POST /store/onboarding/dismiss`**
+- Auth: Shopify JWT
+- Body: none
+- Response: `{ "ok": true }`
+- Implementation: Set `shopify_stores.onboarding_dismissed = true` for this store
+- Idempotent — calling it twice is fine
+
+**Database migration:**
+```sql
+ALTER TABLE shopify_stores
+  ADD COLUMN onboarding_dismissed BOOLEAN NOT NULL DEFAULT FALSE;
+```
+
+---
+
+### Implementation Order
+
+1. **Backend:** DB migration + two onboarding endpoints (30 min, unblocks frontend)
+2. **Frontend Step 1:** `lib/api/onboarding.ts` + type + `SetupGuide` component on dashboard
+3. **Frontend Step 2:** Product search box + results grid on dashboard
+4. **Commit + push both together**
+
+---
+

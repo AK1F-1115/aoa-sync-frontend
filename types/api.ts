@@ -817,3 +817,38 @@ export interface StripeSetupIntentResponse {
 export interface StripeSavePaymentMethodRequest {
   payment_method_id: string;
 }
+
+// ---------------------------------------------------------------------------
+// Orders — Bulk Purchase
+// ---------------------------------------------------------------------------
+
+export interface BulkPurchaseRequest {
+  order_ids: number[];
+}
+
+export interface BulkPurchaseResult {
+  order_id: number;
+  status: 'succeeded' | 'failed' | 'requires_action';
+  message: string | null;
+}
+
+export interface BulkPurchaseResponse {
+  results: BulkPurchaseResult[];
+  succeeded: number;
+  failed: number;
+  requires_action: number;
+  total_charged: string;
+}
+
+// ---------------------------------------------------------------------------
+// Orders — Tracking
+// ---------------------------------------------------------------------------
+
+export interface OrderTrackingUpdateRequest {
+  tracking_number: string;
+}
+
+export interface OrderTrackingUpdateResponse {
+  ok: boolean;
+  tracking_number: string;
+}

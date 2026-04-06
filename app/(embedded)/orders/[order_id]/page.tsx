@@ -26,10 +26,11 @@ import {
   SkeletonPage,
   SkeletonBodyText,
   Modal,
+  TextField,
 } from '@shopify/polaris';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { loadStripe } from '@stripe/stripe-js';
-import { getOrderDetail, purchaseOrder, getPaymentMethod } from '@/lib/api/orders';
+import { getOrderDetail, purchaseOrder, getPaymentMethod, updateOrderTracking } from '@/lib/api/orders';
 import { ApiError } from '@/lib/api/client';
 import type { OrderStatus, OrderDetail } from '@/types/api';
 
@@ -265,9 +266,30 @@ function PurchaseSection({ order }: { order: OrderDetail }) {
 // ---------------------------------------------------------------------------
 
 export default function OrderDetailPage() {
-  const params   = useParams();
-  const router   = useRouter();
-  const orderId  = Number(Array.isArray(params.order_id) ? params.order_id[0] : params.order_id);
+  const params      = useParams();
+  const router      = useRouter();
+  const queryClient = useQueryClient();
+  const orderId     = Number(Array.isArray(params.order_id) ? params.order_id[0] : params.order_id);
+
+  // ── Tracking edit state ───────────────────────────────────────────────────
+  const [editingTracking,   setEditingTracking]   = useState(false);
+  const [trackingInput,     setTrackingInput]     = useState('');
+  const [trackingEditError, setTrackingEditError] = useState<string | null>(null);
+
+  const updateTrackingMutation = useMutation({
+    mutationFn: (tn: string) => updateOrderTracking(orderId, tn),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ['orderDetail', orderId] });
+      void queryClient.invalidateQueries({ queryKey: ['orders'] });
+      setEditingTracking(false);
+      setTrackingEditError(null);
+    },
+    onError: (err) => {
+      setTrackingEditError(
+        err instanceof ApiError ? err.message : 'Could not update tracking number.',
+      );
+    },
+  });
 
   const { data: order, isLoading, isError, error, refetch } = useQuery<OrderDetail>({
     queryKey: ['orderDetail', orderId],
@@ -366,24 +388,101 @@ export default function OrderDetailPage() {
                   <Text as="span">{formatDateTime(order.purchased_at)}</Text>
                 </BlockStack>
               )}
-              {order.tracking_number && (
-                <BlockStack gap="050">
-                  <Text as="span" variant="bodySm" tone="subdued">Tracking number</Text>
-                  <Text as="span" fontWeight="semibold">{order.tracking_number}</Text>
-                </BlockStack>
-              )}
+              {/* Tracking number — always shown; editable once order has been purchased */}
+              <BlockStack gap="050">
+                <Text as="span" variant="bodySm" tone="subdued">Tracking number</Text>
+                {editingTracking ? (
+                  <BlockStack gap="200">
+                    {/* eslint-disable-next-line jsx-a11y/no-static-element-interactions */}
+                    <div onKeyDown={(e) => {
+                      if (e.key === 'Enter')  updateTrackingMutation.mutate(trackingInput.trim());
+                      if (e.key === 'Escape') setEditingTracking(false);
+                    }}>
+                      <TextField
+                        label="Tracking number"
+                        labelHidden
+                        value={trackingInput}
+                        onChange={setTrackingInput}
+                        autoComplete="off"
+                        connectedRight={
+                          <Button
+                            variant="primary"
+                            loading={updateTrackingMutation.isPending}
+                            onClick={() => updateTrackingMutation.mutate(trackingInput.trim())}
+                          >
+                            Save
+                          </Button>
+                        }
+                      />
+                    </div>
+                    {trackingEditError && (
+                      <Text as="p" tone="critical" variant="bodySm">{trackingEditError}</Text>
+                    )}
+                    <Button
+                      variant="plain"
+                      onClick={() => { setEditingTracking(false); setTrackingEditError(null); }}
+                    >
+                      Cancel
+                    </Button>
+                  </BlockStack>
+                ) : (
+                  <InlineStack gap="200" blockAlign="center">
+                    <Text
+                      as="span"
+                      fontWeight={order.tracking_number ? 'semibold' : 'regular'}
+                      tone={order.tracking_number ? undefined : 'subdued'}
+                    >
+                      {order.tracking_number ?? '—'}
+                    </Text>
+                    {order.purchased_at && (
+                      <Button
+                        variant="plain"
+                        onClick={() => {
+                          setTrackingInput(order.tracking_number ?? '');
+                          setEditingTracking(true);
+                          setTrackingEditError(null);
+                        }}
+                      >
+                        {order.tracking_number ? 'Edit' : 'Add'}
+                      </Button>
+                    )}
+                  </InlineStack>
+                )}
+              </BlockStack>
             </div>
 
             {/* Pricing summary */}
             <Divider />
             <InlineStack align="space-between">
-              <Text as="span" tone="subdued">Customer paid (Shopify)</Text>
+              <Text as="span" tone="subdued">Customer paid (products)</Text>
               <Text as="span">{formatPrice(order.subtotal_price)}</Text>
             </InlineStack>
             <InlineStack align="space-between">
-              <Text as="span" fontWeight="semibold">Your AOA cost (you will be charged)</Text>
+              <Text as="span" fontWeight="semibold">Your AOA cost</Text>
               <Text as="span" fontWeight="semibold">{formatPrice(order.aoa_total_cost)}</Text>
             </InlineStack>
+            {(() => {
+              const sub = parseFloat(order.subtotal_price ?? '');
+              const aoa = parseFloat(order.aoa_total_cost ?? '');
+              if (isNaN(sub) || isNaN(aoa) || sub <= 0) return null;
+              const margin    = sub - aoa;
+              const marginPct = ((margin / sub) * 100).toFixed(0);
+              return (
+                <InlineStack align="space-between">
+                  <Text as="span" tone="subdued">
+                    Product margin{' '}
+                    <Text as="span" variant="bodySm" tone="subdued">(excl. shipping)</Text>
+                  </Text>
+                  <Text
+                    as="span"
+                    fontWeight="semibold"
+                    tone={margin >= 0 ? 'success' : 'critical'}
+                  >
+                    {margin >= 0 ? '$' : '-$'}{Math.abs(margin).toFixed(2)}{' '}({marginPct}%)
+                  </Text>
+                </InlineStack>
+              );
+            })()}
           </BlockStack>
         </Card>
 

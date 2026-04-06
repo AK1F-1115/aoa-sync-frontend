@@ -22,6 +22,10 @@ import type {
   StripePaymentMethodResponse,
   StripeSetupIntentResponse,
   StripeSavePaymentMethodRequest,
+  BulkPurchaseRequest,
+  BulkPurchaseResponse,
+  OrderTrackingUpdateRequest,
+  OrderTrackingUpdateResponse,
 } from '@/types/api';
 
 export async function getOrders(params?: OrderListParams): Promise<OrderListResponse> {
@@ -64,5 +68,36 @@ export async function savePaymentMethod(
   return apiFetch<StripePaymentMethodResponse>('/store/stripe/payment-method', {
     method: 'POST',
     body: JSON.stringify(body),
+  });
+}
+
+/**
+ * Bulk-purchase multiple pending orders in a single backend call.
+ *
+ * Requires backend: POST /store/orders/bulk-purchase
+ *   Body:     { order_ids: number[] }
+ *   Response: BulkPurchaseResponse
+ */
+export async function bulkPurchaseOrders(orderIds: number[]): Promise<BulkPurchaseResponse> {
+  return apiFetch<BulkPurchaseResponse>('/store/orders/bulk-purchase', {
+    method: 'POST',
+    body: JSON.stringify({ order_ids: orderIds } satisfies BulkPurchaseRequest),
+  });
+}
+
+/**
+ * Manually set or update the tracking number for an order.
+ *
+ * Requires backend: PATCH /store/orders/{id}/tracking
+ *   Body:     { tracking_number: string }
+ *   Response: { ok: boolean, tracking_number: string }
+ */
+export async function updateOrderTracking(
+  orderId: number,
+  trackingNumber: string,
+): Promise<OrderTrackingUpdateResponse> {
+  return apiFetch<OrderTrackingUpdateResponse>(`/store/orders/${orderId}/tracking`, {
+    method: 'PATCH',
+    body: JSON.stringify({ tracking_number: trackingNumber } satisfies OrderTrackingUpdateRequest),
   });
 }
