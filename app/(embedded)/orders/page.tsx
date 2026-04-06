@@ -173,7 +173,7 @@ export default function OrdersPage() {
 
   // â”€â”€ Selection â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
   const { selectedResources, allResourcesSelected, handleSelectionChange } =
-    useIndexResourceState(orders as { [key: string]: unknown }[], { resourceIDResolver: (o) => String((o as OrderListItem).id) });
+    useIndexResourceState(orders as unknown as { [key: string]: unknown }[], { resourceIDResolver: (o) => String((o as unknown as OrderListItem).id) });
 
   const clearSelection = useCallback(() => {
     (handleSelectionChange as (t: string, s: boolean) => void)('all', false);
