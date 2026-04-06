@@ -1138,6 +1138,9 @@ function ShippingTab({ shopDomain }: { shopDomain: string | undefined }) {
           `Shipping profiles were restored. ${data.warehouse_products} warehouse and ${data.dropship_products} dropship products reassigned. Go to Shopify Admin → Settings → Shipping and delivery to verify your rates.`
         );
         setReconcileResultTone('success');
+      } else if (data.repaired_zones) {
+        setReconcileResult(data.message);
+        setReconcileResultTone('success');
       } else if (data.skipped) {
         setReconcileResult(data.message);
         setReconcileResultTone('info');

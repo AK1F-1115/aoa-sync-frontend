@@ -306,6 +306,8 @@ export interface ShippingReconcileResponse {
   healthy?: boolean;
   /** Profiles were deleted and have been restored */
   recovered?: boolean;
+  /** Shipping zones/rates were missing and have been restored */
+  repaired_zones?: boolean;
   /** Bootstrap was skipped because auto_shipping_profiles=false */
   skipped?: boolean;
   warehouse_products?: number;
